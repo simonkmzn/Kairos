@@ -1,0 +1,79 @@
+.perf { max-width: 1240px; margin: 0 auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.perf .topbar { position: sticky; top: 10px; }
+.hero { padding: 34px 6px 6px; }
+.hero h1 { margin: 6px 0 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 800; }
+.lede { max-width: 860px; margin: 0; color: var(--text-2); font-size: 16px; line-height: 1.6; }
+.lede b { color: var(--text); }
+
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.tile { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.tile-head { display: flex; justify-content: space-between; align-items: center; }
+.tile-head h3 { margin: 0; font-size: 15px; }
+.tile-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile .venue { padding: 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); }
+.tile .venue .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tile .venue .name { font-size: 12px; font-weight: 700; color: var(--text-2); }
+.tile .venue .ret { font: 700 22px var(--mono); letter-spacing: -0.03em; }
+.tile .venue .vs { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.badge { font-size: 10px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+.badge.edge { background: var(--up-soft); color: var(--up); }
+.badge.weak { background: var(--warn-soft); color: var(--warn); }
+.badge.none { background: var(--down-soft); color: #ff8a92; }
+.tile .acc { font-size: 12.5px; color: var(--text-2); }
+.tile .acc b { font-family: var(--mono); color: var(--text); }
+
+.tabs { display: flex; gap: 6px; margin-top: 12px; }
+.tabs button { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--text-2); font-weight: 700; font-size: 14px; padding: 9px 18px; border-radius: 11px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--text); color: #06080c; border-color: transparent; }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; }
+.grid2 > *, .perf > * { min-width: 0; }
+.grid2 + .grid2, .detail-block { margin-top: 14px; }
+.chart-box { position: relative; height: 320px; }
+.chart-box svg { display: block; width: 100%; height: 100%; }
+.chart-box svg text { font-family: var(--mono); }
+.pc-grid { stroke: rgba(255, 255, 255, 0.05); }
+.pc-tick { fill: var(--muted); font-size: 10.5px; }
+.pc-base { stroke: rgba(255, 255, 255, 0.18); }
+.pc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.pc-hit { fill: transparent; cursor: crosshair; }
+.pc-cross { stroke: rgba(255, 255, 255, 0.25); }
+.pc-dot { stroke: #0d1119; stroke-width: 2; }
+.legend-row { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--text-2); margin-bottom: 8px; }
+.legend-row i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; }
+
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cov { margin-top: 8px; }
+.cov-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 54px; gap: 10px; align-items: center; font-size: 12.5px; color: var(--text-2); margin-top: 10px; }
+.cov-bar { position: relative; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.05); }
+.cov-bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: linear-gradient(90deg, #22d3ee, #818cf8); }
+.cov-bar em { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); border-radius: 1px; }
+.cov-row b { font-family: var(--mono); color: var(--text); text-align: right; }
+
+.table-wrap { overflow-x: auto; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.t th, table.t td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+table.t th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+table.t th:first-child, table.t td:first-child { text-align: left; }
+table.t td { font-family: var(--mono); color: var(--text-2); }
+table.t td:first-child { font-family: var(--sans); color: var(--text); font-weight: 600; }
+table.t tr.chosen td { background: rgba(129, 140, 248, 0.08); color: var(--text); }
+table.t td.up { color: var(--up); }
+table.t td.down { color: var(--down); }
+.coinname { display: inline-flex; align-items: center; gap: 8px; }
+
+.prose p, .prose li { color: var(--text-2); line-height: 1.65; font-size: 14px; }
+.prose h2 { font-size: 18px; margin: 4px 0 8px; }
+.prose h3 { font-size: 15px; margin: 18px 0 6px; }
+.prose ul { padding-left: 20px; margin: 6px 0; }
+.prose b { color: var(--text); }
+
+@media (max-width: 1000px) {
+  .tiles { grid-template-columns: 1fr; }
+  .grid2 { grid-template-columns: 1fr; }
+  .perf .topbar { position: static; }
+}
+@media (max-width: 560px) {
+  .tile-row { grid-template-columns: 1fr; }
+  .chart-box { height: 260px; }
+}

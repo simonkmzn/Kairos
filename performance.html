@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kairos · Performance</title>
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2322d3ee'/%3E%3Cstop offset='.55' stop-color='%23818cf8'/%3E%3Cstop offset='1' stop-color='%23c084fc'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M11 8v16M21 8l-6.5 8L21 24' stroke='%2305070b' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/kairos.css">
+<link rel="stylesheet" href="css/performance.css">
+</head>
+<body>
+<div class="perf">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Kairos home">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset=".55" stop-color="#818cf8"/><stop offset="1" stop-color="#c084fc"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#logo-g)"/><path d="M11 8v16M21 8l-6.5 8L21 24" stroke="#05070b" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Kairos</span>
+    </a>
+    <nav class="nav" style="margin-left:auto"><a href="index.html">Dashboard</a><a class="active" href="performance.html">Performance</a></nav>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow">Out-of-sample track record</p>
+    <h1>How good is Kairos, <span class="grad-text">really?</span></h1>
+    <p class="lede" id="lede">Loading results…</p>
+  </section>
+
+  <section class="tiles" id="tiles"></section>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Timeframe"></div>
+  <div id="detail"></div>
+
+  <section class="card panel prose" id="method"></section>
+</div>
+<footer class="foot">Kairos is a research tool, not financial advice. Past performance does not guarantee future returns.</footer>
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+<script src="results/research.js"></script>
+<script src="js/app/tooltips.js"></script>
+<script src="js/performance.js"></script>
+</body>
+</html>

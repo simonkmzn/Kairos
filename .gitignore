@@ -1,0 +1,4 @@
+# Raw candle history (~80 MB) - re-download with update-data.cmd
+data/
+results/history/
+.claude/

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kairos · Model training</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 14px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; background: #07090d; color: #e6e8ee; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 18px 64px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p { color: #9aa3b2; margin: 0 0 18px; }
+  .card { background: #0f131b; border: 1px solid #1e2430; border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+  label { margin-right: 14px; }
+  button { font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 10px; border: 0; background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #05060a; cursor: pointer; margin-top: 12px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .bar { height: 6px; border-radius: 3px; background: #1e2430; overflow: hidden; margin: 14px 0 8px; }
+  .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, #22d3ee, #8b5cf6); transition: width .2s; }
+  #log { font: 12px/1.7 "JetBrains Mono", ui-monospace, Consolas, monospace; color: #9aa3b2; white-space: pre-wrap; max-height: 380px; overflow: auto; }
+  a { color: #67e8f9; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Model training</h1>
+  <p>Retrains the Kairos models from the files in <code>data/</code>: weekly walk-forward on 12 coins, choosing settings on 2021 – mid-2024 and testing on mid-2024 – today. Takes a few minutes. Needs <code>serve.cmd</code> running so it can save to <code>config/</code> and <code>results/</code>.</p>
+  <div class="card">
+    <label><input type="checkbox" value="1d" checked> 1D</label>
+    <label><input type="checkbox" value="4h" checked> 4H</label>
+    <label><input type="checkbox" value="1h" checked> 1H</label>
+    <br><button id="run">Train models</button>
+    <div class="bar"><div id="bar"></div></div>
+    <div id="status">Idle.</div>
+  </div>
+  <div class="card"><div id="log"></div></div>
+  <p><a href="index.html">Open the dashboard</a> · <a href="performance.html">Open the performance page</a></p>
+</main>
+<script src="js/core/indicators.js"></script>
+<script src="js/core/features.js"></script>
+<script src="js/core/model.js"></script>
+<script src="js/core/backtest.js"></script>
+<script src="js/core/research.js"></script>
+<script src="js/research-page.js"></script>
+</body>
+</html>

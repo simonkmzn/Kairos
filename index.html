@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Signal Terminal</title>
+<meta name="theme-color" content="#111213">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111213'/%3E%3Cpath d='M6 22l6-8 5 5 9-11' stroke='%23f5c518' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/terminal.css">
+</head>
+<body>
+<div class="term">
+  <div class="main">
+    <section class="pane chart-pane">
+      <header class="pane-head">
+        <span class="pane-title">Chart · Binance</span>
+        <div class="chart-controls">
+          <select class="coin" id="coin" aria-label="Coin"></select>
+          <div class="tfs" id="tfs" role="radiogroup" aria-label="Timeframe"></div>
+        </div>
+      </header>
+      <div class="tv" id="tv"></div>
+      <footer class="stats" id="stats"></footer>
+    </section>
+
+    <section class="pane" id="news-pane">
+      <header class="pane-head">
+        <span class="pane-title">News &amp; events</span>
+        <span class="pane-meta" id="news-meta"></span>
+      </header>
+      <div class="pane-body" id="news"></div>
+    </section>
+
+    <section class="pane" id="forward-pane">
+      <header class="pane-head">
+        <span class="pane-title">Forward test · live track record</span>
+        <span class="head-btns"><span class="pane-meta" id="fw-meta"></span><button class="tbtn" id="fw-sweep" type="button">&#8635; Sweep now</button></span>
+      </header>
+      <div class="pane-body" id="forward"></div>
+    </section>
+
+    <section class="pane" id="logger-pane">
+      <header class="pane-head">
+        <span class="pane-title">Logger &amp; honest scorecard</span>
+        <span class="pane-meta" id="lg-meta"></span>
+      </header>
+      <div class="pane-body" id="logger"></div>
+    </section>
+  </div>
+
+  <aside class="side">
+    <section class="pane">
+      <header class="pane-head"><span class="pane-title">Signal</span><span class="head-btns"><button class="tbtn" id="params-toggle" type="button" title="Parameters" aria-expanded="false">&#9881;</button><button class="tbtn" id="refresh" type="button">&#8635; Refresh</button></span></header>
+      <div class="pane-body" id="signal"></div>
+      <div class="pane-body params" id="params" hidden></div>
+    </section>
+    <section class="pane" id="risk-pane">
+      <header class="pane-head"><span class="pane-title">Risk management</span></header>
+      <div class="pane-body" id="risk"></div>
+    </section>
+    <section class="pane" id="breakdown-pane">
+      <header class="pane-head"><span class="pane-title">Signal breakdown</span></header>
+      <div class="pane-body" id="breakdown"></div>
+    </section>
+    <section class="pane" id="tested-pane">
+      <header class="pane-head"><span class="pane-title">Tested on unseen data</span><a href="tune.html">Full report &rarr;</a></header>
+      <div class="pane-body" id="tested"></div>
+    </section>
+  </aside>
+</div>
+
+<script async src="https://s3.tradingview.com/tv.js" onload="window.__tvReady && window.__tvReady()"></script>
+<script src="js/core/indicators.js"></script>
+<script src="js/core/features.js"></script>
+<script src="js/core/model.js"></script>
+<script src="js/core/backtest.js"></script>
+<script src="js/core/calendar.js"></script>
+<script src="js/core/signal.js"></script>
+<script src="config/signal.js"></script>
+<script src="js/app/data.js"></script>
+<script src="js/app/news.js"></script>
+<script src="js/app/signal-engine.js"></script>
+<script src="js/app/forward.js"></script>
+<script src="js/app/dashboard.js"></script>
+</body>
+</html>

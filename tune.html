@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Engine · Tuning &amp; Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/terminal.css">
+</head>
+<body>
+<main class="report">
+  <div class="pane-head" style="border:1px solid var(--line);background:var(--pane)">
+    <span class="pane-title">Signal engine · tuning &amp; results</span>
+    <a href="index.html">← Terminal</a>
+  </div>
+
+  <section class="pane">
+    <div class="pane-head"><span class="pane-title">Run</span></div>
+    <div class="pane-body">
+      <p>Tunes the 21-signal formula and its exit policy on <b>2021-01-01 → 2024-06-30</b> (fit half → validation half), then measures everything on <b>2024-07-01 → today</b> (holdout), which plays no part in any choice. Weekly-retrained ML input, Fear &amp; Greed and FOMC calendar inputs, 16 exit setups (four stop rules × four targets) chosen per situation, 0.07% fees per side. Needs <code>serve.cmd</code> running to save results. Takes 5–12 minutes.</p>
+      <div style="margin:6px 0 10px">
+        <label class="opt"><input type="checkbox" value="1d" checked> 1D</label>
+        <label class="opt"><input type="checkbox" value="4h" checked> 4H</label>
+        <label class="opt"><input type="checkbox" value="1h" checked> 1H</label>
+        <span class="dim">·</span>
+        <label class="opt" style="margin-left:10px"><input type="radio" name="coins" value="major" checked> BTC, ETH, SOL, BNB, XRP</label>
+        <label class="opt"><input type="radio" name="coins" value="all"> all 12 coins</label>
+      </div>
+      <button class="tbtn primary" id="run">Tune signal engine</button>
+      <div class="bar"><div id="bar"></div></div>
+      <div id="status" class="muted">Idle.</div>
+      <div id="log" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <div id="report"></div>
+
+  <p class="dim" style="font-size:11.5px">ML-model internals (the former Kairos pages): <a href="research.html">research.html</a> · <a href="performance.html">performance.html</a> · <a href="kairos.html">kairos.html</a></p>
+</main>
+<script src="js/core/indicators.js"></script>
+<script src="js/core/features.js"></script>
+<script src="js/core/model.js"></script>
+<script src="js/core/backtest.js"></script>
+<script src="js/core/research.js"></script>
+<script src="js/core/calendar.js"></script>
+<script src="js/core/signal.js"></script>
+<script src="js/core/tuner.js"></script>
+<script src="results/tuning.js"></script>
+<script src="js/tune-page.js"></script>
+</body>
+</html>

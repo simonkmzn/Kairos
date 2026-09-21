@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kairos · Crypto Forecasts</title>
+<meta name="description" content="Live crypto charts with machine-learning forecasts, projected price ranges and honest out-of-sample track records.">
+<meta name="theme-color" content="#05070b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2322d3ee'/%3E%3Cstop offset='.55' stop-color='%23818cf8'/%3E%3Cstop offset='1' stop-color='%23c084fc'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M11 8v16M21 8l-6.5 8L21 24' stroke='%2305070b' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/kairos.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Kairos home">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset=".55" stop-color="#818cf8"/><stop offset="1" stop-color="#c084fc"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#logo-g)"/><path d="M11 8v16M21 8l-6.5 8L21 24" stroke="#05070b" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Kairos</span>
+    </a>
+    <div class="controls">
+      <div class="seg" id="tf-seg" role="radiogroup" aria-label="Timeframe"></div>
+      <div class="seg" id="venue-seg" role="radiogroup" aria-label="Market type"></div>
+    </div>
+    <nav class="nav"><a class="active" href="index.html">Dashboard</a><a href="performance.html">Performance</a></nav>
+    <div class="live" id="live" title="Live prices"><span class="dot"></span><span>Live</span></div>
+  </header>
+
+  <aside class="watch card" aria-label="Markets">
+    <div class="watch-head"><span>Markets</span><span class="muted" id="watch-tf"></span></div>
+    <div class="watch-list" id="watchlist"></div>
+  </aside>
+
+  <main class="main">
+    <section class="card chart-card">
+      <div class="chart-head">
+        <div class="asset" id="asset"></div>
+        <div class="asset-stats" id="asset-stats"></div>
+      </div>
+      <div class="tv" id="tv"></div>
+    </section>
+
+    <section class="card forecast-card">
+      <div class="card-title">
+        <div>
+          <h2><span class="grad-text">Kairos forecast</span></h2>
+          <p class="sub" id="fc-sub">&nbsp;</p>
+        </div>
+        <div class="legend">
+          <span><i style="background:rgba(129,140,248,.45)"></i>50% range</span>
+          <span><i style="background:rgba(129,140,248,.18)"></i>80% range</span>
+          <span><i style="background:rgba(22,199,132,.25)"></i>Model long</span>
+          <span><i style="background:rgba(234,57,67,.25)"></i>Model short / out</span>
+          <span><i style="background:linear-gradient(90deg,#16c784,#ea3943)"></i>Chance up, each candle</span>
+        </div>
+      </div>
+      <div id="forecast-chart" class="fc-chart"></div>
+    </section>
+  </main>
+
+  <aside class="side">
+    <section class="card signal-card" id="signal"></section>
+    <section class="card panel" id="range"></section>
+    <section class="card panel" id="drivers"></section>
+    <section class="card panel" id="record"></section>
+  </aside>
+</div>
+
+<footer class="foot">
+  Kairos is a research tool, not financial advice. Forecasts are probabilities from a model tested on past data. They are often wrong, and past results don’t guarantee future returns.
+  Chart by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> · market data from Binance.
+</footer>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+<script async src="https://s3.tradingview.com/tv.js" onload="window.__tvReady && window.__tvReady()"></script>
+<script src="js/core/indicators.js"></script>
+<script src="js/core/features.js"></script>
+<script src="js/core/model.js"></script>
+<script src="js/core/backtest.js"></script>
+<script src="config/models.js"></script>
+<script src="results/research.js"></script>
+<script src="js/app/data.js"></script>
+<script src="js/app/engine.js"></script>
+<script src="js/app/tooltips.js"></script>
+<script src="js/app/forecast-chart.js"></script>
+<script src="js/app/app.js"></script>
+</body>
+</html>
