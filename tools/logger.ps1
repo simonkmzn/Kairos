@@ -105,7 +105,7 @@ function PushToGitHub {
   if (-not $git) { return }
   Push-Location $root
   try {
-    & $git add results/forward.json results/logger-runs.json results/logger-status.json 2>&1 | Out-Null
+    & $git add results/forward.json results/logger-runs.json results/logger-status.json results/logger.log 2>&1 | Out-Null
     $staged = & $git diff --cached --name-only 2>&1
     if (-not $staged) { return }
     & $git -c user.name='Signal Terminal logger' -c user.email='logger@localhost' commit -m "forward test: sweep $(Get-Date -Format 'yyyy-MM-dd HH:mm')" 2>&1 | Out-Null

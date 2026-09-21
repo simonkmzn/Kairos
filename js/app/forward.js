@@ -16,7 +16,11 @@
   const KEY = 'terminal.forward';
   const FEE = 0.0007;
   const r4 = (v) => (Number.isFinite(v) ? Math.round(v * 1e4) / 1e4 : v);
-  const state = { trades: [], startedAt: null, loaded: false, server: false, lastSweep: {}, lastSweepAt: null, sweeping: false, error: null, bench: {}, runs: [], logger: null };
+  // Served from anywhere but this PC (e.g. GitHub Pages) = a read-only mirror: show the
+  // PC's record, never start a second one. Keeping one source of truth matters more than
+  // logging a few extra trades.
+  const mirror = typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && !/^(localhost|127\.0\.0\.1|\[?::1\]?)$/.test(location.hostname);
+  const state = { trades: [], startedAt: null, loaded: false, server: false, mirror, lastSweep: {}, lastSweepAt: null, sweeping: false, error: null, bench: {}, runs: [], logger: null };
 
   // ---------------- storage ----------------
   function mergeTrades(a, b) {
@@ -39,8 +43,8 @@
       state.server = false;
     }
     const a = (local && local.trades) || [], b = (remote && remote.trades) || [];
-    state.trades = mergeTrades(a, b);
-    state.bench = (remote && remote.bench) || (local && local.bench) || {};
+    state.trades = mirror ? b : mergeTrades(a, b);
+    state.bench = (remote && remote.bench) || (!mirror && local && local.bench) || {};
     await loadLoggerStatus();
     state.startedAt = Math.min(local && local.startedAt ? local.startedAt : Infinity, remote && remote.startedAt ? remote.startedAt : Infinity);
     if (!Number.isFinite(state.startedAt)) state.startedAt = Date.now();
@@ -70,6 +74,7 @@
   }
   async function save() {
     const data = { version: 1, startedAt: state.startedAt, savedAt: Date.now(), bench: state.bench, trades: state.trades };
+    if (state.mirror) return;
     const json = JSON.stringify(data);
     try { localStorage.setItem(KEY, json); } catch (e) { /* blocked */ }
     if (!state.server) return;
@@ -199,6 +204,7 @@
 
   // Sweep every coin on every timeframe whose latest candle closed since the last sweep.
   async function sweep(force, opts) {
+    if (state.mirror) return false;
     if (state.sweeping) return false;
     state.sweeping = true;
     state.error = null;

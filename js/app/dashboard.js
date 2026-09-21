@@ -78,8 +78,12 @@
   }
 
   // ---------------- TradingView ----------------
+  // On a phone the drawing rail and TradingView's own interval bar eat ~50px of a
+  // ~390px screen, which is what makes the candles look squashed. We already have
+  // our own coin and timeframe buttons, so drop both there.
+  const isNarrow = () => window.innerWidth < 760;
   function mountTv() {
-    const box = $('#tv'), k = state.coin + state.tf;
+    const box = $('#tv'), narrow = isNarrow(), k = state.coin + state.tf + (narrow ? '|n' : '|w');
     if (!window.TradingView) {
       if (!box.firstChild) box.innerHTML = '<div class="tv-fallback">Loading TradingView chart…</div>';
       return;
@@ -94,9 +98,20 @@
       symbol: 'BINANCE:' + state.coin, interval: tfOf(state.tf).tv, timezone: tz,
       theme: 'dark', style: '1', locale: 'en',
       toolbar_bg: '#17181a', backgroundColor: '#131416', gridColor: 'rgba(255,255,255,0.04)',
-      enable_publishing: false, allow_symbol_change: false, hide_side_toolbar: false, withdateranges: true, save_image: false,
+      enable_publishing: false, allow_symbol_change: false, save_image: false,
+      hide_side_toolbar: narrow, hide_top_toolbar: narrow, hide_legend: false, withdateranges: !narrow,
     });
   }
+  let wasNarrow = isNarrow(), tvResizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(tvResizeTimer);
+    tvResizeTimer = setTimeout(() => {
+      if (isNarrow() !== wasNarrow) {
+        wasNarrow = isNarrow();
+        mountTv();
+      }
+    }, 300);
+  });
   window.__tvReady = () => { state.tvKey = ''; mountTv(); };
   setTimeout(() => {
     if (!window.TradingView && $('#tv .tv-fallback')) $('#tv').innerHTML = '<div class="tv-fallback">The TradingView chart could not load (internet or ad blocker). The signal panel still works.</div>';
@@ -171,11 +186,12 @@
     const C = window.SIGNAL_CONFIG;
     if (!st.loaded) { $('#forward').innerHTML = '<div class="skel" style="height:90px"></div>'; return; }
     const meta = [];
-    if (st.sweeping) meta.push('<span class="updating">sweeping…</span>');
+    if (st.mirror) meta.push('<b class="y">read-only mirror</b>');
+    else if (st.sweeping) meta.push('<span class="updating">sweeping…</span>');
     else if (st.lastSweepAt) meta.push(`swept ${clock(st.lastSweepAt)}`);
     meta.push(`since ${new Date(st.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`);
-    meta.push(st.server ? 'results/forward.json' : 'this browser only');
-    if (st.logger && st.logger.at) meta.push(`auto-logger ran ${barTime(st.logger.at, '1h')}`);
+    if (!st.mirror) meta.push(st.server ? 'results/forward.json' : 'this browser only');
+    if (st.logger && st.logger.at) meta.push(`${st.mirror ? 'PC swept' : 'auto-logger ran'} ${barTime(st.logger.at, '1h')}`);
     $('#fw-meta').innerHTML = meta.join(' · ');
     const tiles = Fw.TFS.map((tf) => {
       const cfg = C && C.timeframes && C.timeframes[tf];
@@ -195,7 +211,7 @@
       return `<li><span class="tag ${t.side > 0 ? 'bull' : 'bear'}">${t.side > 0 ? '▲' : '▼'}</span><span class="when">${barTime(t.t + K.features.TIMEFRAMES[t.tf].barMs, t.tf)}</span><b>${t.symbol.replace('USDT', '')}</b><span class="lv">${SIG_LABEL[t.tf]} ${t.side > 0 ? 'long' : 'short'} @ ${fmtPrice(t.entry)} · stop ${fmtPrice(t.stop)} · ${t.target !== null ? 'target ' + fmtPrice(t.target) : 'trailing'} · p ${pctAbs(t.p, 0)} · risk ${pctAbs(t.risk, 1)}${cb ? '' : ' · older engine'}</span><span class="res">${res}</span></li>`;
     }).join('')}</ul>` : `<p class="empty" style="padding:8px 0">No calls logged yet. Every call the tested formula makes at a candle close after ${new Date(Date.parse(C.generatedAt)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })} (the last tuning) will appear here and be scored against what the market did next. Keep this page open, or open it now and then — it catches up on the last 300 candles.</p>`;
     $('#forward').innerHTML = tiles.replace(/^/, '<div class="fw-grid">') + '</div>' + list + (st.error ? `<p class="note r">Last sweep problem: ${esc(st.error)}</p>` : '') +
-      `<p class="note">Same rules as the backtest: entry at the candle close, the tuned exit setup, one position per coin and timeframe, 0.07% fees. The news tilt and your overrides are not applied here — this tests the formula itself.</p>`;
+      `<p class="note">Same rules as the backtest: entry at the candle close, the tuned exit setup, one position per coin and timeframe, 0.07% fees. The news tilt and your overrides are not applied here — this tests the formula itself.${st.mirror ? ' This copy only <b>displays</b> the record your PC keeps; it never logs trades of its own, so there is one set of numbers, not two. It refreshes when the PC pushes, about once an hour while it is on.' : ''}</p>`;
   }
   // The scorecard that matters: what the formula's chosen bars did, against what
   // EVERY bar did over the same window. A rally lifts both; only skill separates them.
@@ -527,7 +543,8 @@
     document.title = `${coinOf(t.symbol).ticker} ${fmtPrice(t.price)} · ${state.derived ? callWord(state.derived.call) : 'Signal'}`;
   }
 
-  $('#fw-sweep').addEventListener('click', () => runSweep(true));
+  if (Fw.state.mirror) $('#fw-sweep').hidden = true;
+  else $('#fw-sweep').addEventListener('click', () => runSweep(true));
 
   // ---------------- init ----------------
   parseHash();

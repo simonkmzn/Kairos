@@ -198,7 +198,20 @@ table.t tr.hl td { background: rgba(245, 197, 24, 0.06); }
 label.opt { margin-right: 14px; cursor: pointer; }
 
 @media (max-width: 1120px) {
-  .term { grid-template-columns: minmax(0, 1fr); }
+  /* One column: chart first, then the call and its levels, then the evidence. */
+  .term { display: flex; flex-direction: column; }
+  .main, .side { display: contents; }
+  /* flex items don't inherit the grid's minmax(0,…) clamp, so wide tables would
+     otherwise stretch the whole page sideways */
+  .term .pane { min-width: 0; max-width: 100%; }
+  .chart-pane { order: 1; }
+  #signal-pane { order: 2; }
+  #risk-pane { order: 3; }
+  #breakdown-pane { order: 4; }
+  #tested-pane { order: 5; }
+  #news-pane { order: 6; }
+  #forward-pane { order: 7; }
+  #logger-pane { order: 8; }
   .news-list { grid-template-columns: 1fr; }
   .bias { grid-template-columns: 1fr; gap: 6px; }
   .tv { height: 480px; }
@@ -221,7 +234,10 @@ label.opt { margin-right: 14px; cursor: pointer; }
   .term { padding: 8px; gap: 8px; }
   .pane-head { flex-wrap: wrap; }
   .chart-controls { justify-content: flex-start; }
-  .tv { height: 400px; }
+  /* let the chart use the full screen width, and give it back the height the
+     hidden TradingView toolbars were using */
+  .chart-pane { margin: 0 -8px; border-left: 0; border-right: 0; }
+  .tv { height: 460px; }
   .call { font-size: 28px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats .cell:nth-child(3) { border-right: 1px solid var(--line); }
