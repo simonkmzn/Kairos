@@ -126,7 +126,7 @@
     tilt = Number.isFinite(tilt) ? tilt : 0;
     const score = a.scoreTested + tilt;
     const rawCall = Sg.decide(score, theta), lean = score >= 0 ? 1 : -1, dir = rawCall || lean;
-    const gated = c.edge === 'none' && !params.showCalls;
+    const gated = (c.edge === 'none' || params.forceGate) && !params.showCalls;
     const call = gated ? 0 : rawCall;
     const cell = Sg.cellOf(a.atrPos, dir, score, theta, c.maxScore);
     let combo, exitReason, exitMode;

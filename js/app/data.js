@@ -20,6 +20,23 @@
     { symbol: 'DOTUSDT', ticker: 'DOT', name: 'Polkadot' },
     { symbol: 'LTCUSDT', ticker: 'LTC', name: 'Litecoin' },
     { symbol: 'TRXUSDT', ticker: 'TRX', name: 'TRON' },
+    // Added 2026-09-26: more coins = more trades per week, so the forward test
+    // sharpens faster. Picked by 24h volume with >1000 4h candles of history.
+    // Note these are highly correlated with BTC, so the effective sample grows
+    // far more slowly than the trade count.
+    { symbol: 'SUIUSDT', ticker: 'SUI', name: 'Sui' },
+    { symbol: 'NEARUSDT', ticker: 'NEAR', name: 'NEAR Protocol' },
+    { symbol: 'UNIUSDT', ticker: 'UNI', name: 'Uniswap' },
+    { symbol: 'ARBUSDT', ticker: 'ARB', name: 'Arbitrum' },
+    { symbol: 'FILUSDT', ticker: 'FIL', name: 'Filecoin' },
+    { symbol: 'ONDOUSDT', ticker: 'ONDO', name: 'Ondo' },
+    { symbol: 'RUNEUSDT', ticker: 'RUNE', name: 'THORChain' },
+    { symbol: 'ENAUSDT', ticker: 'ENA', name: 'Ethena' },
+    { symbol: 'WLDUSDT', ticker: 'WLD', name: 'Worldcoin' },
+    { symbol: 'TAOUSDT', ticker: 'TAO', name: 'Bittensor' },
+    { symbol: 'ZECUSDT', ticker: 'ZEC', name: 'Zcash' },
+    { symbol: 'DASHUSDT', ticker: 'DASH', name: 'Dash' },
+    { symbol: 'PEPEUSDT', ticker: 'PEPE', name: 'Pepe' },
   ];
 
   // `model: true` = the forecast model was trained and tested on this timeframe.

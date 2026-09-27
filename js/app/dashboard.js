@@ -22,7 +22,7 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function fmtPrice(v) {
     if (!Number.isFinite(v)) return '—';
-    const a = Math.abs(v), d = a >= 100 ? 2 : a >= 1 ? 3 : a >= 0.1 ? 4 : 5;
+    const a = Math.abs(v), d = a >= 100 ? 2 : a >= 1 ? 3 : a >= 0.1 ? 4 : a >= 0.001 ? 6 : 8;
     return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
   const usd = (v) => (Number.isFinite(v) ? '$' + fmtPrice(v) : '—');
@@ -43,7 +43,12 @@
   };
   const comboLabel = Sg.comboLabel;
   const fmtTheta = (th) => (th[0] === th[1] ? `±${th[0]}` : `+${th[0]} / ${MINUS}${th[1]}`);
-  const NO_EDGE_TF = { '1h': 'use 4H or 1D', '4h': 'use 1D', '1d': 'use 4H' };
+  const NO_EDGE_TF = { '1h': 'use 4H', '4h': 'use 1D', '1d': 'use 4H' };
+  // Timeframes the backtest says are unreliable for a reason the tuner's own
+  // pass/fail can't see. 1D: its skill swings from -0.32R to +0.25R across the
+  // nine holdout quarters with no consistent sign, on only 224 trades.
+  const NO_CONSISTENT_SKILL = { '1d': 'skill has no consistent sign across quarters (−0.32R to +0.25R)' };
+  const gatedTf = (tf, cfg) => (cfg && cfg.config.edge === 'none') || !!NO_CONSISTENT_SKILL[tf];
 
   // ---------------- URL + parameter state ----------------
   function parseHash() {
@@ -229,23 +234,31 @@
     const rows = Fw.TFS.map((tf) => {
       const b = st.bench[tf], cfg = C && C.timeframes[tf];
       const trades = st.trades.filter((t) => t.tf === tf), s = Fw.stats(trades);
-      if (!b || !b.bars) return [SIG_LABEL[tf] + (cfg && cfg.config.edge === 'none' ? ' <span class="dim">gated</span>' : ''), s.closed, '—', '—', '—', '<span class="dim">not measured yet</span>'];
-      const edge = b.firedAvgR !== null ? b.firedAvgR - b.avgR : null;
+      const name = SIG_LABEL[tf] + (gatedTf(tf, cfg) ? ' <span class="dim">gated</span>' : '');
+      if (!b || !b.trades) return [name, `${s.closed}<small class="muted"> / ${s.open} open</small>`, '—', '—', '<span class="dim">no closed trades yet</span>'];
       return [
-        SIG_LABEL[tf] + (cfg && cfg.config.edge === 'none' ? ' <span class="dim">gated</span>' : ''),
+        name,
         `${s.closed}<small class="muted"> / ${s.open} open</small>`,
-        s.closed ? `<span class="${s.avgR > 0 ? 'g' : 'r'}">${signed(s.avgR, 2)}R</span>` : '—',
-        b.firedAvgR !== null ? `${signed(b.firedAvgR, 2)}R<small class="muted"> ${b.firedBars} bars</small>` : '<span class="dim">none fired</span>',
-        `${signed(b.avgR, 2)}R<small class="muted"> ${b.bars.toLocaleString()} bars</small>`,
-        edge === null ? '—' : `<b class="${edge > 0 ? 'g' : 'r'}">${signed(edge, 2)}R</b>`,
+        `<span class="${b.realizedAvgR > 0 ? 'g' : 'r'}">${signed(b.realizedAvgR, 2)}R</span>`,
+        `${signed(b.benchAvgR, 2)}R<small class="muted"> ${b.bars.toLocaleString()} bars</small>`,
+        `<b class="${b.skill > 0 ? 'g' : 'r'}">${signed(b.skill, 2)}R</b>`,
       ];
     });
-    const table = `<div class="table-wrap"><table class="t"><thead><tr><th></th><th>Logged</th><th>Realised</th><th>Its picks</th><th>Every bar</th><th>Skill</th></tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const table = `<div class="table-wrap"><table class="t"><thead><tr><th></th><th>Logged</th><th>Its trades</th><th>Random, same rules</th><th>Skill</th></tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 
     const recent = runs.slice(-8).reverse().map((r) => `<li><span class="tag ${r.ok ? 'bull' : 'bear'}">${r.ok ? '●' : '△'}</span><span class="when">${barTime(r.at, '1h')}</span><span class="lv">${r.ok ? `${r.trades} logged · ${r.open} open · ${r.closed} closed` : esc(r.note || 'failed')}</span></li>`).join('');
 
+    // Same trades priced at maker fees (limit orders) instead of taker.
+    const makerPct = 0.04, takerPct = 0.07;
+    const maker = Fw.TFS.map((tf) => {
+      const ts = st.trades.filter((t) => t.tf === tf && t.status === 'closed' && t.slDist > 0);
+      if (!ts.length) return null;
+      const adj = ts.reduce((s, t) => s + t.R + (2 * (takerPct - makerPct) / 100) * t.entry / t.slDist, 0) / ts.length;
+      return `${SIG_LABEL[tf]} ${signed(adj, 2)}R`;
+    }).filter(Boolean).join(' · ');
     $('#logger').innerHTML = table +
-      `<p class="note"><b>Its picks</b> = a long from each bar the formula fired on. <b>Every bar</b> = the same trade from every bar in the window, its rules unchanged. <b>Skill</b> is the difference, and it is the only column that can't be faked by a rising market: positive means the formula chose better moments than a dart, negative means worse. <b>Realised</b> is the actual logged trades (sequential, adaptive exits), which is why it differs.</p>` +
+      (maker ? `<p class="note">Priced at maker fees (${makerPct}% limit orders instead of ${takerPct}% market orders) the same trades give: <b>${maker}</b>. That gap is the cheapest real improvement available — it needs no change to the formula, only resting limit orders instead of taking the spread.</p>` : '') +
+      `<p class="note"><b>Its trades</b> = the trades it actually took. <b>Random, same rules</b> = entering at a random bar instead, using each trade's own stop, target and long/short mix. <b>Skill</b> is the difference — the only column a rising market can't fake: positive means it chose better moments than a dart, negative means worse. Expect it to wander: with this few trades, a reading anywhere between roughly ±0.5R is still noise.</p>` +
       (recent ? `<p class="sub" style="margin:12px 0 4px">Recent sweeps</p><ul class="fw-list lg-runs">${recent}</ul>` : '') +
       (st.logger && st.logger.error ? `<p class="note r">Last reported problem: ${esc(st.logger.error)}</p>` : '');
   }
@@ -290,7 +303,7 @@
     if (d.gated) {
       word = 'NO EDGE';
       cls = 'wait';
-      sub = `${SIG_LABEL[tf]} has no tested edge after fees · formula says ${callWord(d.rawCall)} · ${NO_EDGE_TF[tf]}`;
+      sub = `${SIG_LABEL[tf]}: ${NO_CONSISTENT_SKILL[tf] || 'no tested edge after fees'} · formula says ${callWord(d.rawCall)} · ${NO_EDGE_TF[tf]}`;
     }
     const custom = paramsFor(tf);
     const overridden = (custom.theta && (custom.theta[0] !== a.cfg.config.theta[0] || custom.theta[1] !== a.cfg.config.theta[1])) || custom.exit === 'fixed';
@@ -431,7 +444,8 @@
   function rerender() {
     const a = state.analysis;
     if (!a || a.symbol !== state.coin) return;
-    const d = (state.derived = Eng.derive(a, newsTilt().total, paramsFor(sigTf())));
+    const tf = sigTf();
+    const d = (state.derived = Eng.derive(a, newsTilt().total, Object.assign({ forceGate: !!NO_CONSISTENT_SKILL[tf] }, paramsFor(tf))));
     ['#risk-pane', '#breakdown-pane', '#tested-pane'].forEach((s) => ($(s).hidden = false));
     renderSignal(a, d);
     renderRisk(a, d);

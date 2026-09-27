@@ -173,34 +173,73 @@
   }
 
   /*
-   * The honest benchmark. For the same window, same coins and the same exit rules,
-   * score a long entry from EVERY resolvable bar — then compare that with the bars
-   * the formula actually fired on. If the formula has entry skill its bars beat the
-   * rest; if the week was simply a rally, both look identical.
+   * The honest benchmark, matched to what the system actually did.
+   *
+   * An earlier version scored "every bar the formula fired on" with the BASE exit
+   * setup and compared that to every bar. That flattered nothing and misled badly:
+   * the real trades are sequential (one per coin) and may use the adaptive exit
+   * setup, so it was comparing two things the system never does. This version takes
+   * the trades it genuinely took and asks: entering at a RANDOM bar instead, with
+   * that trade's own stop, target and direction mix, what would you have made?
    */
-  function accumulateBench(a, cfgWrap, acc, sinceOverride) {
-    const c = cfgWrap.config, cb = c.combos[c.base.key];
+  // Accumulators cover every exit setup the engine can choose (base + policy), not
+  // just the ones already seen, so trades logged during this very sweep are scored
+  // too instead of lagging a cycle behind.
+  function benchStart(cfgWrap) {
+    const c = cfgWrap.config, keys = new Set([c.base.key]);
+    if (c.policy) for (const cell in c.policy) keys.add(c.policy[cell].key);
+    const acc = {};
+    for (const k of keys) if (c.combos[k]) acc[k] = { L: { n: 0, s: 0, w: 0 }, S: { n: 0, s: 0 } };
+    return { acc };
+  }
+  function accumulateBench(a, cfgWrap, bench, sinceOverride) {
+    const c = cfgWrap.config;
     const eligibleFrom = sinceOverride || Math.max(Date.parse(root.SIGNAL_CONFIG.generatedAt), state.startedAt);
     for (const b of a.bars) {
       if (b.t < eligibleFrom || b.i + c.maxBars > a.series.n - 1) continue;
-      const slDist = Sg.stopDistance(cb.stopMode, cb.slAtr, b.atr, 1, b.close, b.support, b.resistance);
-      const res = resolveTrade({ side: 1, slDist, entry: b.close, rr: cb.rr, maxBars: c.maxBars, stopMode: cb.stopMode, be: cb.be }, a.series, b.i);
-      if (res.status !== 'closed') continue;
-      acc.n++;
-      acc.sum += res.R;
-      if (res.R > 0) acc.wins++;
-      if (Sg.decide(b.score, c.theta) > 0) {
-        acc.nFired++;
-        acc.sumFired += res.R;
-        if (res.R > 0) acc.winsFired++;
+      for (const k in bench.acc) {
+        const cb = c.combos[k];
+        for (const dir of [1, -1]) {
+          const slDist = Sg.stopDistance(cb.stopMode, cb.slAtr, b.atr, dir, b.close, b.support, b.resistance);
+          const res = resolveTrade({ side: dir, slDist, entry: b.close, rr: cb.rr, maxBars: c.maxBars, stopMode: cb.stopMode, be: cb.be }, a.series, b.i);
+          if (res.status !== 'closed') continue;
+          const t = dir > 0 ? bench.acc[k].L : bench.acc[k].S;
+          t.n++;
+          t.s += res.R;
+          if (dir > 0 && res.R > 0) t.w++;
+        }
       }
     }
   }
-  const finishBench = (acc) => ({
-    bars: acc.n, avgR: acc.n ? r4(acc.sum / acc.n) : null, winRate: acc.n ? r4(acc.wins / acc.n) : null,
-    firedBars: acc.nFired, firedAvgR: acc.nFired ? r4(acc.sumFired / acc.nFired) : null, firedWinRate: acc.nFired ? r4(acc.winsFired / acc.nFired) : null,
-    at: Date.now(),
-  });
+  function finishBench(bench, trades) {
+    const used = {};
+    for (const t of trades) {
+      if (t.status !== 'closed') continue;
+      const u = used[t.combo] || (used[t.combo] = { n: 0, longs: 0, realized: 0 });
+      u.n++;
+      u.realized += t.R;
+      if (t.side > 0) u.longs++;
+    }
+    let realized = 0, expected = 0, n = 0, bars = 0, wins = 0;
+    for (const k in used) {
+      const u = used[k], a = bench.acc[k];
+      if (!a || !a.L.n) continue;
+      const longShare = u.longs / u.n;
+      const avgL = a.L.s / a.L.n, avgS = a.S.n ? a.S.s / a.S.n : 0;
+      expected += (longShare * avgL + (1 - longShare) * avgS) * u.n;
+      realized += u.realized;
+      n += u.n;
+      bars = Math.max(bars, a.L.n);
+      wins += a.L.w;
+    }
+    return {
+      trades: n, bars,
+      realizedAvgR: n ? r4(realized / n) : null,
+      benchAvgR: n ? r4(expected / n) : null,
+      skill: n ? r4((realized - expected) / n) : null,
+      at: Date.now(),
+    };
+  }
 
   // Sweep every coin on every timeframe whose latest candle closed since the last sweep.
   async function sweep(force, opts) {
@@ -216,15 +255,15 @@
         if (!cfg) continue;
         const barMs = F.TIMEFRAMES[tf].barMs, lastClose = Math.floor(now / barMs) * barMs;
         if (!force && (state.lastSweep[tf] || 0) >= lastClose) continue;
-        const acc = { n: 0, sum: 0, wins: 0, nFired: 0, sumFired: 0, winsFired: 0 };
+        const bench = benchStart(cfg);
         for (const coin of Dt.COINS) {
           try {
             const a = await K.signalEngine.analyze(coin.symbol, tf);
             if (processCoin(a, cfg, opts && opts.since)) changed = true;
-            accumulateBench(a, cfg, acc, opts && opts.since);
+            accumulateBench(a, cfg, bench, opts && opts.since);
           } catch (e) { state.error = `${coin.ticker} ${tf}: ${e.message}`; }
         }
-        state.bench[tf] = finishBench(acc);
+        state.bench[tf] = finishBench(bench, state.trades.filter((t) => t.tf === tf));
         state.lastSweep[tf] = lastClose;
         changed = true;
       }
