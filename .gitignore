@@ -2,3 +2,11 @@
 data/
 results/history/
 .claude/
+
+# Research lab - stays on this PC, never pushed to the site
+lab.html
+js/lab-page.js
+js/lab-worker.js
+js/core/experiments.js
+results/lab.js
+results/lab.json

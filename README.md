@@ -105,6 +105,39 @@ A bull week lifts "its picks" and "every bar" together, so a spectacular win rat
 
 `serve.cmd` notices when the logger already started the server and just opens the terminal.
 
+## The lab (lab.html)
+
+A separate test bench that **never changes the live formula or the forward test**. It answers two questions:
+
+1. **Does the live formula work on coins it has never seen?** The 13 coins added on 2026-09-26 (SUI, NEAR, UNI, ARB, FIL, ONDO, RUNE, ENA, WLD, TAO, ZEC, DASH, PEPE) were never used in any tuning, so their entire history is a clean test set — cleaner than the 2024–26 holdout, which was consulted many times while the engine was built. The ML input is refit weekly on the original 12 coins only and then applied to the fresh ones, so no model ever sees them.
+2. **Do these additions help?**
+   - **Cross-sectional momentum** — each coin's return over a lookback, ranked against every coin trading at that bar. Lookback (7/14/30 days), weight and bar are chosen on 2023–mid-2024 validation only.
+   - **Exit when the signal flips** — close a position when the score turns against it, instead of waiting for stop, target or time-out.
+   - **Volatility sizing** — 1.5× size when a coin is calm for its own recent range, 0.5× at its most volatile. (Per-trade volatility sizing is already built in: stops are 3×ATR and risk is a fixed % per trade.)
+
+**Pass rule, fixed in advance:** an addition is only adopted if it beats the current formula on **both** the 5-coin holdout **and** the 13 fresh coins. Adopting one means re-tuning, which restarts the forward test.
+
+Every comparison is against **random entries using the same stop, target and long/short mix**, and is reported quarter by quarter, because a rising market lifts every long and makes raw win rates meaningless.
+
+Fresh-coin caveat: the 13 coins were chosen by *today's* trading volume, so they are coins that survived and grew. That inflates their raw returns, but not the skill column — the random benchmark trades the same coins.
+
+**Results, 27 Sep 2026.** The cleanest test is fresh coins in the holdout period, where neither the coins nor the dates were used in any tuning.
+
+| | Trades | Avg R | Random, same rules | Skill | Quarters with +skill |
+|---|---|---|---|---|---|
+| **4H** | 2,023 | +0.055 | +0.011 | **+0.043** (t ≈ 2.0) | 4 / 9 |
+| 1D | 542 | +0.070 | +0.062 | +0.009 | 2 / 9 |
+| 1H | 2,124 | −0.014 | −0.009 | −0.005 | 1 / 9 |
+
+The 4H formula keeps roughly the same edge on coins it never saw (+0.043R, versus +0.052R on its own holdout), and 12 of 13 fresh coins show positive skill over their full history. That is the strongest evidence this project has produced that the 4H edge is real rather than fitted. 1D and 1H show nothing, which confirms their gates.
+
+**None of the three additions passed, on any timeframe:**
+- **Cross-sectional momentum** — on 4H a 30-day ranking at weight 0.5 won validation by a hair, then made things worse on both the holdout and the fresh coins. On 1H and 1D, validation preferred adding nothing.
+- **Signal-flip exit** — roughly halves the average R. It cuts winners before they reach the 1:3 target, and that target is where the edge comes from.
+- **Volatility sizing** — worse everywhere. In crypto the large winning moves happen during volatility expansions, so sizing down then cuts exactly those.
+
+So the live formula is unchanged, and the forward test runs on undisturbed.
+
 ## Hidden parameters (⚙ in the Signal header)
 
 | Knob | What it does | What you see |
