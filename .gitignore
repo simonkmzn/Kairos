@@ -10,3 +10,4 @@ js/lab-worker.js
 js/core/experiments.js
 results/lab.js
 results/lab.json
+tools/fetch-coinbase.ps1

@@ -206,17 +206,33 @@
       return `<div class="fw-tf"><div class="k"><span>${SIG_LABEL[tf]}${gated ? ' · gated' : ''}</span><span>${s.closed} closed · ${s.open} open</span></div>
         <div class="v ${s.closed ? (s.avgR > 0 ? 'g' : 'r') : 'muted'}">${s.closed ? signed(s.avgR, 3) + 'R' : '—'}<small class="muted" style="font-size:11px;font-weight:500"> per trade</small></div>
         <div class="s">${s.closed ? `win ${pctAbs(s.winRate, 0)} · total ${signed(s.totalR, 1)}R · @1% ${pct(s.return1pct, 1)}` : 'no closed trades yet'}${s.open ? ` · open ${signed(s.unrealizedR, 2)}R` : ''}<br>backtest since ${bt ? monthYear(cfg.windows.recentStart) : '—'}: ${bt && bt.trades ? `${signed(bt.avgR, 3)}R, win ${pctAbs(bt.winRate, 0)}, ${bt.trades} trades` : '—'}</div></div>`;
+    }).join('') + Fw.BOOK.tfs.map((tf) => {
+      // The capped book: what you would actually have traded.
+      const book = st.book && st.book[tf], s = Fw.stats(book ? book.trades : []), all = Fw.stats(st.trades.filter((t) => t.tf === tf));
+      return `<div class="fw-tf cap"><div class="k"><span>${SIG_LABEL[tf]} · max ${Fw.BOOK.cap} open</span><span>${s.closed} closed · ${s.open} open</span></div>
+        <div class="v ${s.closed ? (s.avgR > 0 ? 'g' : 'r') : 'muted'}">${s.closed ? signed(s.avgR, 3) + 'R' : '—'}<small class="muted" style="font-size:11px;font-weight:500"> per trade</small></div>
+        <div class="s">${s.closed ? `win ${pctAbs(s.winRate, 0)} · total ${signed(s.totalR, 1)}R · @${(Fw.BOOK.risk * 100).toFixed(0)}% ${pct(s.returnKelly, 1)}` : book ? 'no closed trades yet' : 'starts at the next sweep'}${s.open ? ` · open ${signed(s.unrealizedR, 2)}R` : ''}<br>all ${SIG_LABEL[tf]} calls: ${all.closed ? `${signed(all.avgR, 3)}R over ${all.closed}` : '—'} · lab: +0.139R vs +0.049R</div></div>`;
     }).join('');
+    const booked = {};
+    for (const tf of Fw.BOOK.tfs) {
+      const book = st.book && st.book[tf];
+      if (book) booked[tf] = { ids: new Set(book.trades.map((t) => t.id)), through: book.through };
+    }
+    const capTag = (t) => {
+      const bk = booked[t.tf];
+      if (!bk) return '';
+      return bk.ids.has(t.id) ? ' · <b class="g">taken</b>' : t.t <= bk.through ? ' · <span class="dim">skipped (cap)</span>' : '';
+    };
     const recent = st.trades.slice().sort((x, y) => y.t - x.t).slice(0, 14);
     const list = recent.length ? `<ul class="fw-list">${recent.map((t) => {
       const cb = C.timeframes[t.tf] && C.timeframes[t.tf].config.combos[t.combo];
       const res = t.status === 'closed'
         ? `<b class="${t.R > 0 ? 'g' : 'r'}">${signed(t.R, 2)}R</b><small>${t.kind === 1 ? 'target' : t.kind === -1 ? 'stop' : t.kind === 2 ? 'trailed' : 'time-out'} · ${t.bars} bars</small>`
         : `<b class="${(t.unrealized || 0) >= 0 ? 'g' : 'r'}">${signed(t.unrealized || 0, 2)}R</b><small>open${t.stale ? ' · stale' : ''} · ${t.bars || 0} bars</small>`;
-      return `<li><span class="tag ${t.side > 0 ? 'bull' : 'bear'}">${t.side > 0 ? '▲' : '▼'}</span><span class="when">${barTime(t.t + K.features.TIMEFRAMES[t.tf].barMs, t.tf)}</span><b>${t.symbol.replace('USDT', '')}</b><span class="lv">${SIG_LABEL[t.tf]} ${t.side > 0 ? 'long' : 'short'} @ ${fmtPrice(t.entry)} · stop ${fmtPrice(t.stop)} · ${t.target !== null ? 'target ' + fmtPrice(t.target) : 'trailing'} · p ${pctAbs(t.p, 0)} · risk ${pctAbs(t.risk, 1)}${cb ? '' : ' · older engine'}</span><span class="res">${res}</span></li>`;
+      return `<li><span class="tag ${t.side > 0 ? 'bull' : 'bear'}">${t.side > 0 ? '▲' : '▼'}</span><span class="when">${barTime(t.t + K.features.TIMEFRAMES[t.tf].barMs, t.tf)}</span><b>${t.symbol.replace('USDT', '')}</b><span class="lv">${SIG_LABEL[t.tf]} ${t.side > 0 ? 'long' : 'short'} @ ${fmtPrice(t.entry)} · stop ${fmtPrice(t.stop)} · ${t.target !== null ? 'target ' + fmtPrice(t.target) : 'trailing'} · p ${pctAbs(t.p, 0)}${cb ? '' : ' · older engine'}${capTag(t)}</span><span class="res">${res}</span></li>`;
     }).join('')}</ul>` : `<p class="empty" style="padding:8px 0">No calls logged yet. Every call the tested formula makes at a candle close after ${new Date(Date.parse(C.generatedAt)).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })} (the last tuning) will appear here and be scored against what the market did next. Keep this page open, or open it now and then — it catches up on the last 300 candles.</p>`;
     $('#forward').innerHTML = tiles.replace(/^/, '<div class="fw-grid">') + '</div>' + list + (st.error ? `<p class="note r">Last sweep problem: ${esc(st.error)}</p>` : '') +
-      `<p class="note">Same rules as the backtest: entry at the candle close, the tuned exit setup, one position per coin and timeframe, 0.07% fees. The news tilt and your overrides are not applied here — this tests the formula itself.${st.mirror ? ' This copy only <b>displays</b> the record your PC keeps; it never logs trades of its own, so there is one set of numbers, not two. It refreshes when the PC pushes, about once an hour while it is on.' : ''}</p>`;
+      `<p class="note">Same rules as the backtest: entry at the candle close, the tuned exit setup, one position per coin and timeframe, 0.07% fees. The news tilt and your overrides are not applied here — this tests the formula itself. <b>${Fw.BOOK.tfs.map((tf) => SIG_LABEL[tf]).join(', ')} · max ${Fw.BOOK.cap} open</b> is the same calls with the trade cap: at most ${Fw.BOOK.cap} positions across all coins, strongest signals first, ${(Fw.BOOK.risk * 100).toFixed(0)}% risk each — what you would actually trade. It counts from the same start, so the two records compare like for like.${st.mirror ? ' This copy only <b>displays</b> the record your PC keeps; it never logs trades of its own, so there is one set of numbers, not two. It refreshes when the PC pushes, about once an hour while it is on.' : ''}</p>`;
   }
   // The scorecard that matters: what the formula's chosen bars did, against what
   // EVERY bar did over the same window. A rally lifts both; only skill separates them.
@@ -244,6 +260,12 @@
         `<b class="${b.skill > 0 ? 'g' : 'r'}">${signed(b.skill, 2)}R</b>`,
       ];
     });
+    for (const tf of Fw.BOOK.tfs) {
+      const b = st.bench[`${tf}|cap`], book = st.book && st.book[tf], s = Fw.stats(book ? book.trades : []);
+      const name = `${SIG_LABEL[tf]} <span class="dim">max ${Fw.BOOK.cap}</span>`;
+      if (!b || !b.trades) rows.push([name, `${s.closed}<small class="muted"> / ${s.open} open</small>`, '—', '—', '<span class="dim">no closed trades yet</span>']);
+      else rows.push([name, `${s.closed}<small class="muted"> / ${s.open} open</small>`, `<span class="${b.realizedAvgR > 0 ? 'g' : 'r'}">${signed(b.realizedAvgR, 2)}R</span>`, `${signed(b.benchAvgR, 2)}R<small class="muted"> ${b.bars.toLocaleString()} bars</small>`, `<b class="${b.skill > 0 ? 'g' : 'r'}">${signed(b.skill, 2)}R</b>`]);
+    }
     const table = `<div class="table-wrap"><table class="t"><thead><tr><th></th><th>Logged</th><th>Its trades</th><th>Random, same rules</th><th>Skill</th></tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 
     const recent = runs.slice(-8).reverse().map((r) => `<li><span class="tag ${r.ok ? 'bull' : 'bear'}">${r.ok ? '●' : '△'}</span><span class="when">${barTime(r.at, '1h')}</span><span class="lv">${r.ok ? `${r.trades} logged · ${r.open} open · ${r.closed} closed` : esc(r.note || 'failed')}</span></li>`).join('');
@@ -266,10 +288,12 @@
   async function runSweep(force) {
     renderForward();
     renderLogger();
+    rerender();
     try { await Fw.sweep(force); } catch (e) { Fw.state.error = e.message; }
     await Fw.loadLoggerStatus();
     renderForward();
     renderLogger();
+    rerender();
   }
   // ?logger=1: unattended mode used by tools/logger.ps1 — sweep, report, nothing else.
   async function loggerRun() {
@@ -291,6 +315,34 @@
   const callWord = (d) => (d > 0 ? 'LONG' : d < 0 ? 'SHORT' : 'WAIT');
   const callCls = (d) => (d > 0 ? 'long' : d < 0 ? 'short' : 'wait');
   const dirWord = (d) => (d > 0 ? 'long' : 'short');
+
+  // Where this coin stands in the capped book (tested formula alone, latest closed candle).
+  function capStatus(a) {
+    const B = Fw.BOOK, book = Fw.state.book && Fw.state.book[a.tf];
+    if (!B.tfs.includes(a.tf) || !Fw.state.loaded) return null;
+    const trades = book ? book.trades : [];
+    const open = trades.filter((t) => t.status === 'open' && !t.stale);
+    const mine = open.find((t) => t.symbol === a.symbol);
+    const base = { open, cap: B.cap, through: book ? book.through : null };
+    if (mine) return Object.assign(base, { kind: mine.t === a.t ? 'take' : 'hold', trade: mine });
+    if (!Sg.decide(a.scoreTested, a.cfg.config.theta)) return Object.assign(base, { kind: 'none' });
+    if (!book || book.through < a.t) return Object.assign(base, { kind: 'pending' });
+    const heldBy = trades.filter((t) => !t.stale && t.t <= a.t && (t.status === 'open' || t.exitT >= a.t));
+    return Object.assign(base, { kind: 'skip', heldBy, sameCoin: heldBy.some((t) => t.symbol === a.symbol) });
+  }
+  function capLine(a, d) {
+    const cs = capStatus(a);
+    if (!cs || d.gated) return '';
+    const who = (list) => list.map((t) => `${t.symbol.replace('USDT', '')} ${dirWord(t.side)}`).join(', ');
+    const slots = `${cs.open.length} of ${cs.cap} slots in use${cs.open.length ? ` (${who(cs.open)})` : ''}`;
+    let html;
+    if (cs.kind === 'take') html = `<b class="g">TAKE IT</b> · got slot ${cs.trade.slot || cs.open.length} of ${cs.cap}`;
+    else if (cs.kind === 'hold') html = `<b class="y">IN THIS TRADE</b> · ${dirWord(cs.trade.side)} since ${barTime(cs.trade.t + a.barMs, a.tf)}, <span class="${(cs.trade.unrealized || 0) >= 0 ? 'g' : 'r'}">${signed(cs.trade.unrealized || 0, 2)}R</span> so far · ${slots}`;
+    else if (cs.kind === 'skip') html = `<b class="r">SKIP</b> · ${cs.sameCoin ? 'this coin’s last trade closed on this same candle' : `all ${cs.cap} slots were taken (${who(cs.heldBy)})`}`;
+    else if (cs.kind === 'pending') html = `<b class="y">CHECKING</b> · ${cs.cap - cs.open.length} of ${cs.cap} slots free at the last check${cs.through ? ` (${barTime(cs.through + a.barMs, a.tf)} candle)` : ''}; decided when every coin has been swept`;
+    else html = d.call ? `tested formula alone makes no call here, so no trade · ${slots}` : `no trade · ${slots}`;
+    return `<p class="cap-line"><span class="muted">Max ${cs.cap} open:</span> ${html}</p>`;
+  }
   const price = () => (state.tickers[state.coin] ? state.tickers[state.coin].price : state.analysis ? state.analysis.close : NaN);
 
   function renderSignal(a, d) {
@@ -310,6 +362,7 @@
     $('#signal').innerHTML = `
       <div class="call ${cls}">${word}<small>${sub}</small></div>
       <div class="strength" title="Score strength: |${d.score.toFixed(2)}| of ${a.maxScore}"><i style="left:0;width:${(strength * 100).toFixed(1)}%"></i><em style="left:${(thetaPos * 100).toFixed(1)}%"></em></div>
+      ${capLine(a, d)}
       <p class="prob">Estimated probability this <b>${dirWord(d.dir)}</b> works out: <b class="big">${pctAbs(d.p)}</b></p>
       <p class="tiny">${(d.base * 100).toFixed(1)} base ${parts.join(' ')}</p>
       <div class="rows compact">
@@ -329,6 +382,12 @@
     const ev = d.p * rewardPct - (1 - d.p) * lv.riskPct - fee;
     const why = d.exitMode === 'adaptive' ? `adaptive · ${d.exitReason}` : d.exitMode === 'override' ? 'your setup' : d.exitReason;
     const manage = Sg.manageText(cb);
+    // Flat risk per trade, with at most BOOK.cap trades open (4H, the tested timeframe).
+    const B = Fw.BOOK, cs = capStatus(a), per = `${(B.risk * 100).toFixed(0)}% of account`;
+    const risk = !d.call ? { cls: '', html: 'none (no call)' }
+      : cs && cs.kind === 'skip' ? { cls: '', html: `none <small class="muted">all ${B.cap} slots taken</small>` }
+      : cs && cs.kind === 'hold' ? { cls: '', html: `already in <small class="muted">${per} when entered</small>` }
+      : { cls: 'y', html: `${per} <small class="muted">max ${B.cap} open · up to ${(B.cap * B.risk * 100).toFixed(0)}% at risk</small>` };
     $('#risk').innerHTML = `
       <p class="sub y">Trade levels (${dirWord(d.dir)} bias · ${comboLabel(cb)})${d.call ? '' : ' · no call yet'}</p>
       <div class="rows">
@@ -337,7 +396,7 @@
         <div class="row"><span>Take Profit</span><b class="g" id="lv-target">${lv.target !== null ? `${usd(lv.target)}<small>${pct(d.dir * lv.rewardPct)}</small>` : 'none · ride the trailing stop'}</b></div>
         <div class="row"><span>Risk : Reward</span><b>${cb.rr ? `1 : ${cb.rr}` : `~1 : ${d.b.toFixed(1)} <small class="muted">avg win on train</small>`}</b></div>
         <div class="row"><span>Profit per $1 (expected)</span><b class="${ev >= 0 ? 'g' : 'r'}" id="lv-ev">${(ev >= 0 ? '+' : MINUS) + '$' + Math.abs(ev).toFixed(4)}</b></div>
-        <div class="row"><span>Suggested risk</span><b class="${d.risk > 0 ? 'y' : ''}">${d.risk > 0 ? `${(d.risk * 100).toFixed(2)}% of account` : 'none (odds too thin)'} <small class="muted">¼ Kelly, cap ${((cfg.kellyCap || 0.02) * 100).toFixed(0)}%</small></b></div>
+        <div class="row"><span>Suggested risk</span><b class="wrap ${risk.cls}">${risk.html}</b></div>
         <div class="row"><span>Breakeven win rate</span><b>${cb.breakeven !== null ? pctAbs(cb.breakeven) : '—'} <small class="muted">time-out ${horizonText(a.tf, cfg.maxBars)}</small></b></div>
         <div class="row"><span>Exit chosen by</span><b class="${d.exitMode === 'override' ? 'y' : ''}">${esc(why)}</b></div>
       </div>

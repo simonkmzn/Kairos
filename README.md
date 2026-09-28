@@ -4,7 +4,7 @@ A crypto trading terminal:
 
 - a live TradingView chart with coin and timeframe pickers (5M … 1M)
 - **SIGNAL**: LONG / SHORT / WAIT (or **NO EDGE** on a timeframe that failed testing), the estimated probability the trade works out, the composite score and what is driving it
-- **RISK MANAGEMENT**: entry, stop loss and take profit from the exit setup that tested best, how to manage the trade (breakeven / trailing), risk : reward, expected profit per $1, **suggested risk per trade** (quarter-Kelly), breakeven win rate
+- **RISK MANAGEMENT**: entry, stop loss and take profit from the exit setup that tested best, how to manage the trade (breakeven / trailing), risk : reward, expected profit per $1, **suggested risk per trade** (2%, at most 3 trades open on 4H), breakeven win rate
 - **⚙ Parameters** (button in the Signal header): hidden knobs — any of 27 stop/target setups, long/short bars, news-tilt cap, the no-edge gate — each shown with its own tested result
 - **NEWS & EVENTS**: Fear & Greed index, the next Fed decision, live headlines scored for sentiment, and your own event bias
 - **TESTED ON UNSEEN DATA** next to every call: the whole holdout, the most recent slice on its own, maker-fee sensitivity, and what sizing would have done
@@ -42,7 +42,9 @@ Requirements: Windows (PowerShell is built in) and a browser with an internet co
 
 **Probability** = P(this trade works out | score), a logistic fit per exit setup on the train period, so the number is calibrated for the exact stop/target shown.
 
-**Suggested risk** = ¼ Kelly on the calibrated probability and payoff, capped at 2% of the account; zero when the odds are too thin.
+**Suggested risk** = a flat 2% of the account per trade.
+
+**Trade cap (4H)**: at most 3 trades open at once across all coins; when several coins fire on the same candle, the strongest scores get the free slots. The SIGNAL pane says **TAKE IT**, **SKIP** (all slots taken), **IN THIS TRADE** or **CHECKING** (the candle isn't decided until every coin has been swept). Tested in the research lab on the holdout with all 25 coins on one book: +0.14R per trade vs +0.05R with no cap, and about half the worst losing stretch. The worst drawdowns in those tests were 21–39R (R = one trade's risk) — at 2% per trade that is a fall of roughly a third to a half of the account before it recovered.
 
 **No-edge gate**: a timeframe whose final formula did not make money on unseen data shows **NO EDGE** instead of a call (the raw call is still printed small; a checkbox in ⚙ shows calls anyway).
 
@@ -78,11 +80,12 @@ Other facts from this run:
 
 ## Forward test (the live track record)
 
-The **FORWARD TEST** pane under the news logs every call the tested formula makes the moment a candle closes — all 12 coins, 1H / 4H / 1D, one position per coin and timeframe at a time, the tuned exit setup, 0.07% fees — and scores each one against the candles that follow (target / stop / trailed / time-out, exactly like the backtest). Only candles that close **after the last tuning** count, so nothing in the log was ever peeked at.
+The **FORWARD TEST** pane under the news logs every call the tested formula makes the moment a candle closes — all 25 coins, 1H / 4H / 1D, one position per coin and timeframe at a time, the tuned exit setup, 0.07% fees — and scores each one against the candles that follow (target / stop / trailed / time-out, exactly like the backtest). Only candles that close **after the last tuning** count, so nothing in the log was ever peeked at.
 
 - It saves to `results/forward.json` when `serve.cmd` is running (so any browser sees the same log), otherwise to this browser.
 - Keep the page open, or just open it now and then: each sweep catches up on the last 300 candles of every coin (12 days of 1H, 50 days of 4H). It sweeps automatically after every candle close and on **Sweep now**.
 - Each timeframe's tile shows closed / open trades, win rate, avg R, total R, return at 1% risk — beside the backtest's "since Jan 2026" figures, which is the comparison that matters.
+- **4H · max 3 open** is a second record of the same calls with the trade cap applied (2% each) — the trades you would actually have taken. It counts from the same start as the others, and the scorecard gives it its own skill row. Trades in the list are tagged *taken* or *skipped (cap)*.
 
 The decision rule: after 2–3 months, if the live column looks like the backtest column, the edge is real enough to trade small; if it doesn't, nothing was lost. Don't re-tune while the forward test runs — re-tuning resets which candles count.
 

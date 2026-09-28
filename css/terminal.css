@@ -51,7 +51,10 @@ button { font: inherit; }
 .params .tested-line b { color: var(--text); }
 
 /* ---------------- forward test pane ---------------- */
-.fw-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.fw-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.fw-tf.cap { border-color: var(--y); }
+.cap-line { text-align: center; font-size: 12.5px; line-height: 1.5; margin: -6px 0 12px; }
+@media (max-width: 1100px) { .fw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .fw-tf { padding: 10px 12px; background: var(--pane2); border: 1px solid var(--line); font-size: 12.5px; }
 .fw-tf .k { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 .fw-tf .v { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -134,6 +137,7 @@ select.coin { background: var(--pane2); color: var(--text); border: 1px solid va
 .rows .row span { color: var(--text-2, #c9cbd1); }
 .rows .row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rows .row b small { font-size: 11.5px; margin-left: 6px; font-weight: 500; }
+.rows .row b.wrap { white-space: normal; text-align: right; }
 .gauge { display: grid; grid-template-columns: 96px minmax(0, 1fr) 70px; gap: 10px; align-items: center; margin-top: 10px; font-size: 12.5px; }
 .gauge .bar { height: 6px; background: var(--line); position: relative; }
 .gauge .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--y); }
@@ -225,10 +229,11 @@ label.opt { margin-right: 14px; cursor: pointer; }
   .pane-meta { white-space: normal; overflow-wrap: anywhere; }
   .pane-title { white-space: normal; }
   .head-btns { flex-wrap: wrap; align-items: center; }
-  .fw-list li, .lg-runs li { grid-template-columns: 14px minmax(0, 1fr); }
+  .fw-list li, .lg-runs li { grid-template-columns: 14px auto minmax(0, 1fr); }
   .fw-list .when, .lg-runs .when { grid-column: 2; }
-  .fw-list .lv, .lg-runs .lv { grid-column: 2; white-space: normal; }
-  .fw-list .res { grid-column: 2; text-align: left; }
+  .fw-list li > b { grid-column: 3; }
+  .fw-list .lv, .lg-runs .lv { grid-column: 2 / -1; white-space: normal; }
+  .fw-list .res { grid-column: 2 / -1; text-align: left; }
 }
 @media (max-width: 600px) {
   .term { padding: 8px; gap: 8px; }
