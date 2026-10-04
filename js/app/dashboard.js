@@ -247,6 +247,8 @@
     const health = !last ? ['muted', 'no runs recorded yet'] : sinceLast > 95 ? ['r', `last run ${Math.round(sinceLast / 60)}h ago — PC asleep or task stopped`] : ['g', 'running'];
     $('#lg-meta').innerHTML = `<b class="${health[0]}">${health[1]}</b> · ${in24}/24 sweeps in the last day${failed ? ` · ${failed} failed` : ''}`;
 
+    // Skill only scores trades entered on or after the first bar the random side has counted.
+    const scored = (b, s) => (b.from && b.trades !== s.closed ? `<small class="muted"> ${b.trades} since ${barTime(b.from, '1d')}</small>` : '');
     const rows = Fw.TFS.map((tf) => {
       const b = st.bench[tf], cfg = C && C.timeframes[tf];
       const trades = st.trades.filter((t) => t.tf === tf), s = Fw.stats(trades);
@@ -255,7 +257,7 @@
       return [
         name,
         `${s.closed}<small class="muted"> / ${s.open} open</small>`,
-        `<span class="${b.realizedAvgR > 0 ? 'g' : 'r'}">${signed(b.realizedAvgR, 2)}R</span>`,
+        `<span class="${b.realizedAvgR > 0 ? 'g' : 'r'}">${signed(b.realizedAvgR, 2)}R</span>${scored(b, s)}`,
         `${signed(b.benchAvgR, 2)}R<small class="muted"> ${b.bars.toLocaleString()} bars</small>`,
         `<b class="${b.skill > 0 ? 'g' : 'r'}">${signed(b.skill, 2)}R</b>`,
       ];
@@ -264,7 +266,7 @@
       const b = st.bench[`${tf}|cap`], book = st.book && st.book[tf], s = Fw.stats(book ? book.trades : []);
       const name = `${SIG_LABEL[tf]} <span class="dim">max ${Fw.BOOK.cap}</span>`;
       if (!b || !b.trades) rows.push([name, `${s.closed}<small class="muted"> / ${s.open} open</small>`, '—', '—', '<span class="dim">no closed trades yet</span>']);
-      else rows.push([name, `${s.closed}<small class="muted"> / ${s.open} open</small>`, `<span class="${b.realizedAvgR > 0 ? 'g' : 'r'}">${signed(b.realizedAvgR, 2)}R</span>`, `${signed(b.benchAvgR, 2)}R<small class="muted"> ${b.bars.toLocaleString()} bars</small>`, `<b class="${b.skill > 0 ? 'g' : 'r'}">${signed(b.skill, 2)}R</b>`]);
+      else rows.push([name, `${s.closed}<small class="muted"> / ${s.open} open</small>`, `<span class="${b.realizedAvgR > 0 ? 'g' : 'r'}">${signed(b.realizedAvgR, 2)}R</span>${scored(b, s)}`, `${signed(b.benchAvgR, 2)}R<small class="muted"> ${b.bars.toLocaleString()} bars</small>`, `<b class="${b.skill > 0 ? 'g' : 'r'}">${signed(b.skill, 2)}R</b>`]);
     }
     const table = `<div class="table-wrap"><table class="t"><thead><tr><th></th><th>Logged</th><th>Its trades</th><th>Random, same rules</th><th>Skill</th></tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 

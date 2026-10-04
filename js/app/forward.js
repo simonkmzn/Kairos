@@ -28,7 +28,7 @@
   // PC's record, never start a second one. Keeping one source of truth matters more than
   // logging a few extra trades.
   const mirror = typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && !/^(localhost|127\.0\.0\.1|\[?::1\]?)$/.test(location.hostname);
-  const state = { trades: [], book: {}, startedAt: null, loaded: false, server: false, mirror, lastSweep: {}, lastSweepAt: null, sweeping: false, error: null, bench: {}, runs: [], logger: null };
+  const state = { trades: [], book: {}, benchAcc: {}, startedAt: null, loaded: false, server: false, mirror, lastSweep: {}, lastSweepAt: null, sweeping: false, error: null, bench: {}, runs: [], logger: null };
 
   // ---------------- storage ----------------
   function mergeTrades(a, b) {
@@ -55,6 +55,7 @@
     // could never be scored; drop them and the next sweep re-logs that coin correctly.
     state.trades = (mirror ? b : mergeTrades(a, b)).filter((t) => t.slDist > 0);
     state.bench = (remote && remote.bench) || (!mirror && local && local.bench) || {};
+    state.benchAcc = (remote && remote.benchAcc) || (!mirror && local && local.benchAcc) || {};
     // Per timeframe, whichever copy of the capped book has got further.
     const lb = (!mirror && local && local.book) || {}, rb = (remote && remote.book) || {};
     state.book = {};
@@ -87,7 +88,7 @@
     return status;
   }
   async function save() {
-    const data = { version: 1, startedAt: state.startedAt, savedAt: Date.now(), bench: state.bench, trades: state.trades, book: state.book };
+    const data = { version: 1, startedAt: state.startedAt, savedAt: Date.now(), bench: state.bench, benchAcc: state.benchAcc, trades: state.trades, book: state.book };
     if (state.mirror) return;
     const json = JSON.stringify(data);
     try { localStorage.setItem(KEY, json); } catch (e) { /* blocked */ }
@@ -254,18 +255,29 @@
   // Accumulators cover every exit setup the engine can choose (base + policy), not
   // just the ones already seen, so trades logged during this very sweep are scored
   // too instead of lagging a cycle behind.
-  function benchStart(cfgWrap) {
-    const c = cfgWrap.config, keys = new Set([c.base.key]);
+  // They persist across sweeps (in results/forward.json) and count each bar once. A sweep
+  // only sees the last 300 candles, so a fresh tally every time compared trades from the
+  // whole run against random entries from only the last ~12 days on 1H — a rally week's
+  // trades against a flat week's dart throws. `from` is the first bar counted; finishBench
+  // only scores trades entered from then on, so both sides cover the same days.
+  function benchStart(cfgWrap, tf) {
+    const c = cfgWrap.config, cfgAt = root.SIGNAL_CONFIG.generatedAt, keys = new Set([c.base.key]);
     if (c.policy) for (const cell in c.policy) keys.add(c.policy[cell].key);
-    const acc = {};
-    for (const k of keys) if (c.combos[k]) acc[k] = { L: { n: 0, s: 0, w: 0 }, S: { n: 0, s: 0 } };
-    return { acc };
+    let bench = state.benchAcc[tf];
+    if (!bench || bench.cfgAt !== cfgAt || bench.v !== 2) bench = state.benchAcc[tf] = { v: 2, cfgAt, from: null, through: {}, acc: {} };
+    for (const k of keys) if (c.combos[k] && !bench.acc[k]) bench.acc[k] = { L: { n: 0, s: 0, w: 0 }, S: { n: 0, s: 0 } };
+    return bench;
   }
   function accumulateBench(a, cfgWrap, bench, sinceOverride) {
     const c = cfgWrap.config;
     const eligibleFrom = sinceOverride || Math.max(Date.parse(root.SIGNAL_CONFIG.generatedAt), state.startedAt);
+    const done = bench.through[a.symbol] || -Infinity;
+    let last = done;
     for (const b of a.bars) {
-      if (b.t < eligibleFrom || b.i + c.maxBars > a.series.n - 1) continue;
+      // Same start rule as the trades: a candle counts if it CLOSED after the start.
+      if (b.t + a.barMs < eligibleFrom || b.t <= done || b.i + c.maxBars > a.series.n - 1) continue;
+      if (b.t > last) last = b.t;
+      if (bench.from === null || b.t < bench.from) bench.from = b.t;
       for (const k in bench.acc) {
         const cb = c.combos[k];
         for (const dir of [1, -1]) {
@@ -279,11 +291,12 @@
         }
       }
     }
+    if (last > done) bench.through[a.symbol] = last;
   }
   function finishBench(bench, trades) {
     const used = {};
     for (const t of trades) {
-      if (t.status !== 'closed') continue;
+      if (t.status !== 'closed' || bench.from === null || t.t < bench.from) continue;
       const u = used[t.combo] || (used[t.combo] = { n: 0, longs: 0, realized: 0 });
       u.n++;
       u.realized += t.R;
@@ -306,6 +319,7 @@
       realizedAvgR: n ? r4(realized / n) : null,
       benchAvgR: n ? r4(expected / n) : null,
       skill: n ? r4((realized - expected) / n) : null,
+      from: bench.from,
       at: Date.now(),
     };
   }
@@ -324,7 +338,7 @@
         if (!cfg) continue;
         const barMs = F.TIMEFRAMES[tf].barMs, lastClose = Math.floor(now / barMs) * barMs;
         if (!force && (state.lastSweep[tf] || 0) >= lastClose) continue;
-        const bench = benchStart(cfg), analyses = [];
+        const bench = benchStart(cfg, tf), analyses = [];
         let failed = 0;
         for (const coin of Dt.COINS) {
           try {
@@ -373,6 +387,7 @@
   async function clear() {
     state.trades = [];
     state.book = {};
+    state.benchAcc = {};
     state.startedAt = Date.now();
     state.lastSweep = {};
     await save();
