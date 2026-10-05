@@ -12,3 +12,7 @@ results/lab.js
 results/lab.json
 tools/fetch-coinbase.ps1
 tools/fetch-older.ps1
+
+# Phone alerts: the private channel name and what was already sent stay on this PC
+tools/alerts.json
+tools/alerts-sent.json

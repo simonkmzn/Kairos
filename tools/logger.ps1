@@ -125,6 +125,9 @@ if ($done) {
     Log ("sweep saved: {0} trades logged ({1} open, {2} closed){3}" -f $s.trades, $s.open, $s.closed, $(if ($s.error) { ", last problem: $($s.error)" } else { '' }))
   } else { Log 'sweep saved' }
   RecordRun $true 'sweep saved' $s
+  # Phone alerts (tools\alerts.ps1; does nothing until set up with -Setup).
+  $alerts = Join-Path $root 'tools\alerts.ps1'
+  if (Test-Path $alerts) { try { & $alerts } catch { Log "alerts error: $($_.Exception.Message)" } }
   PushToGitHub
   exit 0
 }
