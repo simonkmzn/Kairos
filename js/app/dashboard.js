@@ -3,7 +3,14 @@
   const K = window.KAIROS;
   const Dt = K.data, Eng = K.signalEngine, Sg = K.signal, News = K.news;
   const $ = (s) => document.querySelector(s);
-  const COINS = Dt.COINS;
+  // Sections: the main coins, and the meme coins with their own formula (config/meme.js),
+  // forward-test record and alerts. COINS / Fw / the config always point at the open one.
+  const SETS = {
+    main: { id: 'main', label: 'MAIN', coins: Dt.COINS, fw: K.forward, report: 'tune.html', config: () => window.SIGNAL_CONFIG },
+    meme: { id: 'meme', label: 'MEMES', coins: Dt.MEME_COINS, fw: K.forwardMeme, report: 'tune-meme.html', config: () => window.MEME_CONFIG },
+  };
+  const ALL_SYMBOLS = [...new Set([...Dt.COINS, ...Dt.MEME_COINS].map((c) => c.symbol))];
+  let COINS = Dt.COINS;
   const MINUS = '−';
   const TFS = [
     { id: '5m', label: '5M', tv: '5', sig: '1h' },
@@ -16,7 +23,7 @@
   ];
   const SIG_LABEL = { '1h': '1H', '4h': '4H', '1d': '1D' };
   const REFRESH_MS = 60000;
-  const state = { coin: 'BTCUSDT', tf: '4h', tickers: {}, analysis: null, derived: null, news: null, newsError: null, tvKey: '', live: false, run: 0, params: {} };
+  const state = { set: 'main', coin: 'BTCUSDT', tf: '4h', tickers: {}, analysis: null, derived: null, news: null, newsError: null, tvKey: '', live: false, run: 0, params: {} };
 
   // ---------------- formatting ----------------
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -48,36 +55,61 @@
   // pass/fail can't see. 1D: its skill swings from -0.32R to +0.25R across the
   // nine holdout quarters with no consistent sign, on only 224 trades.
   const NO_CONSISTENT_SKILL = { '1d': 'skill has no consistent sign across quarters (−0.32R to +0.25R)' };
-  const gatedTf = (tf, cfg) => (cfg && cfg.config.edge === 'none') || !!NO_CONSISTENT_SKILL[tf];
+  // That finding is about the main formula. The meme formula's rule (set before its results
+  // were read): a timeframe is live only if, on unseen data, it made money AND beat random
+  // entries with the same long/short mix. Meme 4H (95% shorts while memes fell) did not.
+  const noSkill = (tf) => {
+    if (state.set === 'main') return NO_CONSISTENT_SKILL[tf];
+    const c = window.MEME_CONFIG && window.MEME_CONFIG.timeframes[tf], h = c && c.holdout;
+    return h && !(h.avgR > 0 && h.skill > 0) ? `no better than random entries on unseen data (skill ${signed(h.skill, 3)}R)` : null;
+  };
+  const gatedTf = (tf, cfg) => (cfg && cfg.config.edge === 'none') || !!noSkill(tf);
+  const setCfg = () => SETS[state.set].config();
 
   // ---------------- URL + parameter state ----------------
+  // #BTC/4h = main section, #memes/PEPE/4h = meme section.
+  function applySet(set) {
+    state.set = SETS[set] ? set : 'main';
+    COINS = SETS[state.set].coins;
+    Fw = SETS[state.set].fw;
+    const link = $('#report-link');
+    if (link) link.href = SETS[state.set].report;
+  }
   function parseHash() {
-    const parts = decodeURIComponent(location.hash.slice(1)).split('/');
+    const parts = decodeURIComponent(location.hash.slice(1)).split('/').filter(Boolean);
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('terminal.view') || '{}'); } catch (e) { /* blocked */ }
-    const tk = (parts[0] || saved.ticker || 'BTC').toUpperCase();
+    const memeHash = !!parts[0] && parts[0].toLowerCase() === 'memes';
+    if (memeHash) parts.shift();
+    const set = memeHash ? 'meme' : location.hash.length > 1 ? 'main' : saved.set === 'meme' ? 'meme' : 'main';
+    applySet(set);
+    const savedHere = (saved.set || 'main') === state.set;
+    const tk = (parts[0] || (savedHere && saved.ticker) || COINS[0].ticker).toUpperCase();
     state.coin = (COINS.find((c) => c.ticker === tk) || COINS[0]).symbol;
     const tf = parts[1] || saved.tf;
     state.tf = TFS.some((t) => t.id === tf) ? tf : '4h';
   }
   function writeHash() {
     const c = coinOf(state.coin);
-    const h = `#${c.ticker}/${state.tf}`;
+    const h = state.set === 'meme' ? `#memes/${c.ticker}/${state.tf}` : `#${c.ticker}/${state.tf}`;
     if (location.hash !== h) history.replaceState(null, '', h);
-    try { localStorage.setItem('terminal.view', JSON.stringify({ ticker: c.ticker, tf: state.tf })); } catch (e) { /* blocked */ }
+    try { localStorage.setItem('terminal.view', JSON.stringify({ set: state.set, ticker: c.ticker, tf: state.tf })); } catch (e) { /* blocked */ }
   }
   function loadParams() {
     try { state.params = JSON.parse(localStorage.getItem('terminal.params') || '{}'); } catch (e) { state.params = {}; }
   }
-  const paramsFor = (tf) => state.params[tf] || {};
+  // Overrides are kept per section: the meme formula's bars and exits are its own.
+  const pkey = (tf) => (state.set === 'meme' ? `meme:${tf}` : tf);
+  const paramsFor = (tf) => state.params[pkey(tf)] || {};
   function setParams(tf, patch) {
-    state.params[tf] = Object.assign({}, paramsFor(tf), patch);
-    if (patch === null) delete state.params[tf];
+    state.params[pkey(tf)] = Object.assign({}, paramsFor(tf), patch);
+    if (patch === null) delete state.params[pkey(tf)];
     try { localStorage.setItem('terminal.params', JSON.stringify(state.params)); } catch (e) { /* blocked */ }
   }
 
   // ---------------- controls ----------------
   function renderControls() {
+    $('#sets').innerHTML = Object.values(SETS).map((s) => `<button type="button" role="radio" aria-checked="${s.id === state.set}" data-set="${s.id}">${s.label}</button>`).join('');
     $('#coin').innerHTML = COINS.map((c) => `<option value="${c.symbol}" ${c.symbol === state.coin ? 'selected' : ''}>${c.ticker} / USD</option>`).join('');
     $('#tfs').innerHTML = TFS.map((t) => `<button type="button" role="radio" aria-checked="${t.id === state.tf}" data-tf="${t.id}">${t.label}</button>`).join('');
   }
@@ -185,24 +217,26 @@
   }
 
   // ---------------- forward test ----------------
-  const Fw = K.forward;
+  let Fw = K.forward;
   function renderForward() {
     const st = Fw.state;
-    const C = window.SIGNAL_CONFIG;
+    const C = setCfg();
+    if (!C) { $('#fw-meta').innerHTML = ''; $('#forward').innerHTML = '<p class="empty" style="padding:8px 0">The meme formula has not been built yet (tune-meme.html), so there is no record to show.</p>'; return; }
     if (!st.loaded) { $('#forward').innerHTML = '<div class="skel" style="height:90px"></div>'; return; }
     const meta = [];
+    if (state.set === 'meme') meta.push('<b>memes</b>');
     if (st.mirror) meta.push('<b class="y">read-only mirror</b>');
     else if (st.sweeping) meta.push('<span class="updating">sweeping…</span>');
     else if (st.lastSweepAt) meta.push(`swept ${clock(st.lastSweepAt)}`);
     meta.push(`since ${new Date(st.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`);
-    if (!st.mirror) meta.push(st.server ? 'results/forward.json' : 'this browser only');
+    if (!st.mirror) meta.push(st.server ? (state.set === 'meme' ? 'results/forward-meme.json' : 'results/forward.json') : 'this browser only');
     if (st.logger && st.logger.at) meta.push(`${st.mirror ? 'PC swept' : 'auto-logger ran'} ${barTime(st.logger.at, '1h')}`);
     $('#fw-meta').innerHTML = meta.join(' · ');
     const tiles = Fw.TFS.map((tf) => {
       const cfg = C && C.timeframes && C.timeframes[tf];
       const trades = st.trades.filter((t) => t.tf === tf), s = Fw.stats(trades);
       const bt = cfg && cfg.holdoutRecent;
-      const gated = cfg && cfg.config.edge === 'none';
+      const gated = gatedTf(tf, cfg);
       return `<div class="fw-tf"><div class="k"><span>${SIG_LABEL[tf]}${gated ? ' · gated' : ''}</span><span>${s.closed} closed · ${s.open} open</span></div>
         <div class="v ${s.closed ? (s.avgR > 0 ? 'g' : 'r') : 'muted'}">${s.closed ? signed(s.avgR, 3) + 'R' : '—'}<small class="muted" style="font-size:11px;font-weight:500"> per trade</small></div>
         <div class="s">${s.closed ? `win ${pctAbs(s.winRate, 0)} · total ${signed(s.totalR, 1)}R · @1% ${pct(s.return1pct, 1)}` : 'no closed trades yet'}${s.open ? ` · open ${signed(s.unrealizedR, 2)}R` : ''}<br>backtest since ${bt ? monthYear(cfg.windows.recentStart) : '—'}: ${bt && bt.trades ? `${signed(bt.avgR, 3)}R, win ${pctAbs(bt.winRate, 0)}, ${bt.trades} trades` : '—'}</div></div>`;
@@ -211,7 +245,7 @@
       const book = st.book && st.book[tf], s = Fw.stats(book ? book.trades : []), all = Fw.stats(st.trades.filter((t) => t.tf === tf));
       return `<div class="fw-tf cap"><div class="k"><span>${SIG_LABEL[tf]} · max ${Fw.BOOK.cap} open</span><span>${s.closed} closed · ${s.open} open</span></div>
         <div class="v ${s.closed ? (s.avgR > 0 ? 'g' : 'r') : 'muted'}">${s.closed ? signed(s.avgR, 3) + 'R' : '—'}<small class="muted" style="font-size:11px;font-weight:500"> per trade</small></div>
-        <div class="s">${s.closed ? `win ${pctAbs(s.winRate, 0)} · total ${signed(s.totalR, 1)}R · @${(Fw.BOOK.risk * 100).toFixed(0)}% ${pct(s.returnKelly, 1)}` : book ? 'no closed trades yet' : 'starts at the next sweep'}${s.open ? ` · open ${signed(s.unrealizedR, 2)}R` : ''}<br>all ${SIG_LABEL[tf]} calls: ${all.closed ? `${signed(all.avgR, 3)}R over ${all.closed}` : '—'} · lab: +0.139R vs +0.049R</div></div>`;
+        <div class="s">${s.closed ? `win ${pctAbs(s.winRate, 0)} · total ${signed(s.totalR, 1)}R · @${(Fw.BOOK.risk * 100).toFixed(0)}% ${pct(s.returnKelly, 1)}` : book ? 'no closed trades yet' : 'starts at the next sweep'}${s.open ? ` · open ${signed(s.unrealizedR, 2)}R` : ''}<br>all ${SIG_LABEL[tf]} calls: ${all.closed ? `${signed(all.avgR, 3)}R over ${all.closed}` : '—'}${state.set === 'main' ? ' · lab: +0.139R vs +0.049R' : ''}</div></div>`;
     }).join('');
     const booked = {};
     for (const tf of Fw.BOOK.tfs) {
@@ -237,7 +271,8 @@
   // The scorecard that matters: what the formula's chosen bars did, against what
   // EVERY bar did over the same window. A rally lifts both; only skill separates them.
   function renderLogger() {
-    const st = Fw.state, C = window.SIGNAL_CONFIG;
+    const st = Fw.state, C = setCfg();
+    if (!C) { $('#lg-meta').innerHTML = ''; $('#logger').innerHTML = ''; return; }
     if (!st.loaded) { $('#logger').innerHTML = '<div class="skel" style="height:80px"></div>'; return; }
     const runs = st.runs || [], now = Date.now();
     const last = runs.length ? runs[runs.length - 1] : null;
@@ -287,27 +322,43 @@
       (st.logger && st.logger.error ? `<p class="note r">Last reported problem: ${esc(st.logger.error)}</p>` : '');
   }
 
+  // Both sections are swept, whichever one is on screen.
   async function runSweep(force) {
     renderForward();
     renderLogger();
     rerender();
-    try { await Fw.sweep(force); } catch (e) { Fw.state.error = e.message; }
+    for (const s of Object.values(SETS)) {
+      if (!s.fw.state.loaded) continue;
+      try { await s.fw.sweep(force); } catch (e) { s.fw.state.error = e.message; }
+    }
     await Fw.loadLoggerStatus();
     renderForward();
     renderLogger();
     rerender();
   }
+  const loadRecords = () => Promise.all(Object.values(SETS).map((s) => (s.config() ? s.fw.load() : null)));
   // ?logger=1: unattended mode used by tools/logger.ps1 — sweep, report, nothing else.
   async function loggerRun() {
     document.title = 'logger: sweeping';
-    let error = null;
+    let error = null, memeInfo = null;
     try {
-      await Fw.load();
-      await Fw.sweep(true);
+      await K.forward.load();
+      await K.forward.sweep(true);
     } catch (e) {
       error = e.message;
     }
-    const status = await Fw.reportStatus(error);
+    // The meme section's record, swept in the same run (its alerts read results/forward-meme.json).
+    if (window.MEME_CONFIG) {
+      const m = K.forwardMeme;
+      try {
+        await m.load();
+        await m.sweep(true);
+      } catch (e) {
+        m.state.error = e.message;
+      }
+      memeInfo = { meme: { trades: m.state.trades.length, open: m.state.trades.filter((t) => t.status === 'open').length, closed: m.state.trades.filter((t) => t.status === 'closed').length, error: m.state.error || null } };
+    }
+    const status = await K.forward.reportStatus(error, memeInfo);
     window.__loggerDone = status;
     document.title = 'logger: done';
     renderForward();
@@ -357,7 +408,7 @@
     if (d.gated) {
       word = 'NO EDGE';
       cls = 'wait';
-      sub = `${SIG_LABEL[tf]}: ${NO_CONSISTENT_SKILL[tf] || 'no tested edge after fees'} · formula says ${callWord(d.rawCall)} · ${NO_EDGE_TF[tf]}`;
+      sub = `${SIG_LABEL[tf]}${state.set === 'meme' ? ' memes' : ''}: ${noSkill(tf) || 'no tested edge after fees'} · formula says ${callWord(d.rawCall)} · ${state.set === 'main' ? NO_EDGE_TF[tf] : 'use 1D'}`;
     }
     const custom = paramsFor(tf);
     const overridden = (custom.theta && (custom.theta[0] !== a.cfg.config.theta[0] || custom.theta[1] !== a.cfg.config.theta[1])) || custom.exit === 'fixed';
@@ -373,7 +424,7 @@
         ${d.tilt ? `<div class="row"><span>Tested formula alone</span><b>${callWord(d.callTested)} · ${pctAbs(d.pTested)} <span class="untested">news tilt ${signed(d.tilt, 2)}</span></b></div>` : ''}
         <div class="row"><span>Updated</span><b id="sig-time">${clock(a.computedAt)} · every 60s</b></div>
       </div>
-      <p class="line basis">${Sg.SIGNALS.length} signals · tuned 2021–${monthYear(a.cfg.windows.holdoutStart)} · verified ${monthYear(a.cfg.windows.holdoutStart)}→now · ${SIG_LABEL[tf]} candle closed ${barTime(a.t + a.barMs, tf)}</p>`;
+      <p class="line basis">${state.set === 'meme' ? 'Meme formula · ' : ''}${Sg.SIGNALS.length} signals · tuned 2021–${monthYear(a.cfg.windows.holdoutStart)} · verified ${monthYear(a.cfg.windows.holdoutStart)}→now · ${SIG_LABEL[tf]} candle closed ${barTime(a.t + a.barMs, tf)}</p>`;
   }
 
   function renderRisk(a, d) {
@@ -448,7 +499,14 @@
         ${stat('Win rate', pctAbs(h.winRate), cfg.adaptive ? 'adaptive exits' : cfg.base.breakeven !== null ? `breakeven ${pctAbs(cfg.base.breakeven)} at 1:${cfg.base.rr}` : 'trailing exits', cfg.base.breakeven === null || h.winRate > cfg.base.breakeven ? 'g' : 'r')}
         ${stat('Return risking 1%/trade', pct(h.return1pct, 1), `¼-Kelly sizing ${pct(h.returnKelly, 1)} · max DD ${h.maxDrawdownR.toFixed(0)}R`, h.return1pct > 0 ? 'g' : 'r')}
       </div>
-      <p class="note">Next-candle direction ${pctAbs(pb.allAccuracy)} on every bar (50% = coin flip). With maker fees (${cfg.makerFeePct}%) instead of ${cfg.feePct}%: ${signed(mk.avgR, 3)}R per signal bar vs ${signed(pb.avgR, 3)}R. Same period: ${cfg.adaptive ? `fixed exits ${signed(hf.avgR, 3)}R/trade, ` : ''}equal weights ${signed(b.avgR, 3)}R/trade, ML model alone ${signed(m.avgR, 3)}R/trade. News tilt and event bias are not in these numbers.</p>${custom}`;
+      <p class="note">Next-candle direction ${pctAbs(pb.allAccuracy)} on every bar (50% = coin flip). With maker fees (${cfg.makerFeePct}%) instead of ${cfg.feePct}%: ${signed(mk.avgR, 3)}R per signal bar vs ${signed(pb.avgR, 3)}R. Same period: ${cfg.adaptive ? `fixed exits ${signed(hf.avgR, 3)}R/trade, ` : ''}equal weights ${signed(b.avgR, 3)}R/trade, ML model alone ${signed(m.avgR, 3)}R/trade. News tilt and event bias are not in these numbers.</p>${custom}${rivalNote(a)}`;
+  }
+  // Meme section: the main formula run through the same meme coins and dates, for comparison.
+  function rivalNote(a) {
+    const rv = a.cfg.rival, own = a.cfg.holdout;
+    const skill = own && Number.isFinite(own.skill) ? `<p class="note"><b>Against random entries</b> with the same rules and long/short mix (${pctAbs(own.longShare, 0)} long): ${signed(own.bench, 3)}R per trade, so the formula's <b>skill</b> was <b class="${own.skill > 0 ? 'g' : 'r'}">${signed(own.skill, 3)}R</b>. In a falling market every short looks good; skill is what's left after that.</p>` : '';
+    if (!rv || !rv.holdout) return skill;
+    return skill + `<p class="note"><b>Main formula on these same coins and dates:</b> <span class="${rv.holdout.avgR > 0 ? 'g' : 'r'}">${signed(rv.holdout.avgR, 3)}R</span> per trade over ${rv.holdout.trades} trades (${esc(rv.exit)}), skill ${signed(rv.holdout.skill, 3)}R, vs <b>${signed(own.avgR, 3)}R</b> for the meme formula.</p>`;
   }
 
   // ---------------- parameters panel ----------------
@@ -494,7 +552,8 @@
     ['#risk', '#breakdown', '#tested'].forEach((s) => ($(s).innerHTML = '<div class="skel" style="height:110px"></div>'));
   }
   function renderNotTuned() {
-    $('#signal').innerHTML = `<div class="empty"><h3>Signal engine not tuned yet</h3>Run <code>serve.cmd</code>, then open <a href="tune.html">tune.html</a> and click <b>Tune signal engine</b>. It builds the formula from history and saves it here.</div>`;
+    const page = SETS[state.set].report;
+    $('#signal').innerHTML = `<div class="empty"><h3>${state.set === 'meme' ? 'Meme formula not built yet' : 'Signal engine not tuned yet'}</h3>Run <code>serve.cmd</code>, then open <a href="${page}">${page}</a> and start the tuning. It builds the formula from history and saves it here.</div>`;
     ['#risk-pane', '#breakdown-pane', '#tested-pane'].forEach((s) => ($(s).hidden = true));
     $('#params').innerHTML = '';
   }
@@ -504,9 +563,9 @@
   }
   function rerender() {
     const a = state.analysis;
-    if (!a || a.symbol !== state.coin) return;
+    if (!a || a.symbol !== state.coin || a.set !== state.set) return;
     const tf = sigTf();
-    const d = (state.derived = Eng.derive(a, newsTilt().total, Object.assign({ forceGate: !!NO_CONSISTENT_SKILL[tf] }, paramsFor(tf))));
+    const d = (state.derived = Eng.derive(a, newsTilt().total, Object.assign({ forceGate: !!noSkill(tf) }, paramsFor(tf))));
     ['#risk-pane', '#breakdown-pane', '#tested-pane'].forEach((s) => ($(s).hidden = false));
     renderSignal(a, d);
     renderRisk(a, d);
@@ -520,13 +579,13 @@
 
   // ---------------- refresh ----------------
   async function refresh(showLoading) {
-    const coin = state.coin, tf = sigTf(), run = ++state.run;
-    if (!Eng.configFor(tf)) return renderNotTuned();
+    const coin = state.coin, tf = sigTf(), set = state.set, run = ++state.run;
+    if (!Eng.configFor(tf, set)) return renderNotTuned();
     if (showLoading) renderLoading();
     else { const t = $('#sig-time'); if (t) t.classList.add('updating'); }
     $('#refresh').disabled = true;
     try {
-      const a = await Eng.analyze(coin, tf);
+      const a = await Eng.analyze(coin, tf, set);
       if (run !== state.run) return;
       state.analysis = a;
       rerender();
@@ -544,12 +603,30 @@
   function setCoin(symbol) {
     if (symbol === state.coin) return;
     state.coin = symbol;
+    try { localStorage.setItem(`terminal.coin.${state.set}`, JSON.stringify({ symbol })); } catch (e) { /* blocked */ }
     state.analysis = null;
     state.derived = null;
     writeHash();
     mountTv();
     renderStats();
     renderNews();
+    refresh(true);
+  }
+  function setSet(set) {
+    if (set === state.set || !SETS[set]) return;
+    applySet(set);
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(`terminal.coin.${set}`) || '{}'); } catch (e) { /* blocked */ }
+    state.coin = (COINS.find((c) => c.symbol === saved.symbol) || COINS[0]).symbol;
+    state.analysis = null;
+    state.derived = null;
+    writeHash();
+    renderControls();
+    mountTv();
+    renderStats();
+    renderNews();
+    renderForward();
+    renderLogger();
     refresh(true);
   }
   function setTf(tf) {
@@ -563,6 +640,7 @@
     else rerender();
   }
 
+  $('#sets').addEventListener('click', (e) => { const b = e.target.closest('button[data-set]'); if (b) setSet(b.dataset.set); });
   $('#coin').addEventListener('change', (e) => setCoin(e.target.value));
   $('#tfs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tf]'); if (b) setTf(b.dataset.tf); });
   $('#refresh').addEventListener('click', () => { refresh(false); loadNews(); });
@@ -585,21 +663,23 @@
     }
   });
   window.addEventListener('hashchange', () => {
-    const prev = { coin: state.coin, tf: state.tf };
+    const prev = { set: state.set, coin: state.coin, tf: state.tf };
     parseHash();
-    if (prev.coin !== state.coin || prev.tf !== state.tf) {
+    if (prev.set !== state.set || prev.coin !== state.coin || prev.tf !== state.tf) {
       renderControls();
       mountTv();
       state.analysis = null;
       state.derived = null;
       renderStats();
       renderNews();
+      renderForward();
+      renderLogger();
       refresh(true);
     }
   });
 
   function loadTickers() {
-    return Dt.tickers(COINS.map((c) => c.symbol)).then((t) => {
+    return Dt.tickers(ALL_SYMBOLS).then((t) => {
       Object.assign(state.tickers, t);
       renderStats();
       updateLiveLevels();
@@ -630,7 +710,7 @@
     renderNotTuned();
     renderForward();
     renderLogger();
-    if (window.SIGNAL_CONFIG) loggerRun(); else Fw.reportStatus('signal engine not tuned');
+    if (window.SIGNAL_CONFIG) loggerRun(); else K.forward.reportStatus('signal engine not tuned');
   } else {
     writeHash();
     mountTv();
@@ -640,8 +720,8 @@
     renderLogger();
     loadTickers();
     loadNews();
-    Dt.liveTickers(COINS.map((c) => c.symbol), onTick, (on) => { state.live = on; });
-    refresh(true).then(() => window.SIGNAL_CONFIG && Fw.load().then(() => runSweep(true)));
+    Dt.liveTickers(ALL_SYMBOLS, onTick, (on) => { state.live = on; });
+    refresh(true).then(() => loadRecords().then(() => runSweep(true)));
     setInterval(() => refresh(false), REFRESH_MS);
     setInterval(loadNews, 300000);
     setInterval(() => { if (Fw.state.loaded) runSweep(false); }, 300000);

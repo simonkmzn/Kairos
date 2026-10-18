@@ -39,6 +39,28 @@
     { symbol: 'PEPEUSDT', ticker: 'PEPE', name: 'Pepe' },
   ];
 
+  // Meme-coin section: its own formula, tuned on these coins only (tune-meme.html), its own
+  // forward-test record and alerts. Picked 2026-10-18: Binance USDT spot pairs with a perp and
+  // >$1M daily volume. `futures` = the perp symbol for funding rates where it differs
+  // (contracts in units of 1000).
+  const MEME_COINS = [
+    { symbol: 'DOGEUSDT', ticker: 'DOGE', name: 'Dogecoin' },
+    { symbol: 'SHIBUSDT', ticker: 'SHIB', name: 'Shiba Inu', futures: '1000SHIBUSDT' },
+    { symbol: 'PEPEUSDT', ticker: 'PEPE', name: 'Pepe', futures: '1000PEPEUSDT' },
+    { symbol: 'FLOKIUSDT', ticker: 'FLOKI', name: 'Floki', futures: '1000FLOKIUSDT' },
+    { symbol: 'BONKUSDT', ticker: 'BONK', name: 'Bonk', futures: '1000BONKUSDT' },
+    { symbol: 'WIFUSDT', ticker: 'WIF', name: 'dogwifhat' },
+    { symbol: 'BOMEUSDT', ticker: 'BOME', name: 'Book of Meme' },
+    { symbol: 'PEOPLEUSDT', ticker: 'PEOPLE', name: 'ConstitutionDAO' },
+    { symbol: 'NEIROUSDT', ticker: 'NEIRO', name: 'Neiro' },
+    { symbol: 'PNUTUSDT', ticker: 'PNUT', name: 'Peanut the Squirrel' },
+    { symbol: 'TRUMPUSDT', ticker: 'TRUMP', name: 'Official Trump' },
+    { symbol: 'PENGUUSDT', ticker: 'PENGU', name: 'Pudgy Penguins' },
+  ];
+  // Most memes are young, so their split is later than the main formula's: built on
+  // 2021 - mid-2024, chosen on mid-2024 - mid-2025, judged on mid-2025 onward.
+  const MEME_WINDOWS = { trainStart: '2021-01-01', validationStart: '2024-07-01', holdoutStart: '2025-07-01', recentStart: '2026-01-01' };
+
   // `model: true` = the forecast model was trained and tested on this timeframe.
   const INTERVALS = {
     '15m': { id: '15m', label: '15m', ms: 900000, tv: '15', model: false },
@@ -128,5 +150,5 @@
     return { stop() { stopped = true; if (ws) ws.close(); } };
   }
 
-  K.data = { COINS, INTERVALS, klines, funding, tickers, liveTickers };
+  K.data = { COINS, MEME_COINS, MEME_WINDOWS, INTERVALS, klines, funding, tickers, liveTickers };
 })(typeof self !== 'undefined' ? self : this);

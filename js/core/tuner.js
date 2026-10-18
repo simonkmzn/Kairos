@@ -560,19 +560,24 @@
   }
 
   // ---------------- pipeline ----------------
+  // opts: { symbols, mlSymbols, windows: { trainStart, validationStart, holdoutStart, recentStart },
+  //         fng, htf, rival: { label, weights, theta, baseKey } }. Anything left out uses SETTINGS.
+  // rival = another finished formula run through the same coins, ML input and holdout, for a
+  // like-for-like comparison (the meme section's formula against the main one).
   function runTimeframe(tf, data, opts, say) {
     const started = Date.now();
     const tfDef = F.TIMEFRAMES[tf], cfgT = SETTINGS.timeframes[tf], barMs = tfDef.barMs;
-    const symbols = (opts && opts.symbols) || SETTINGS.symbols;
+    const W = Object.assign({ trainStart: SETTINGS.trainStart, validationStart: SETTINGS.validationStart, holdoutStart: SETTINGS.holdoutStart, recentStart: SETTINGS.recentStart }, opts && opts.windows);
+    const symbols = ((opts && opts.symbols) || SETTINGS.symbols).filter((s) => data[s] && data[s].candles && data[s].candles.length > F.WARMUP + 300);
     const fng = (opts && opts.fng) || null, htfData = tf !== '1d' && opts && opts.htf ? opts.htf : null;
     const combos = combosOf(), byKey = Object.fromEntries(combos.map((cb) => [cb.key, cb]));
     const label = tfDef.label;
 
     say(`${label}: computing ML features`, 0);
-    const mlSyms = SETTINGS.mlSymbols.filter((s) => data[s] && data[s].candles && data[s].candles.length > F.WARMUP + 300);
+    const mlSyms = ((opts && opts.mlSymbols) || SETTINGS.mlSymbols).filter((s) => data[s] && data[s].candles && data[s].candles.length > F.WARMUP + 300);
     const btcFeat = F.compute(data.BTCUSDT.candles, tfDef, null, data.BTCUSDT.funding);
     const feats = mlSyms.map((s) => Object.assign({ symbol: s }, s === 'BTCUSDT' ? btcFeat : F.compute(data[s].candles, tfDef, btcFeat, data[s].funding)));
-    const trainStart = ms(SETTINGS.trainStart), holdStart = ms(SETTINGS.holdoutStart), valStart = ms(SETTINGS.validationStart), recentStart = ms(SETTINGS.recentStart);
+    const trainStart = ms(W.trainStart), holdStart = ms(W.holdoutStart), valStart = ms(W.validationStart), recentStart = ms(W.recentStart);
     const endT = Math.min(...symbols.map((s) => data[s].candles[data[s].candles.length - 1][0]));
 
     const wf = walkForward(feats, cfgT.H, cfgT.windowDays, barMs, trainStart, endT, (msg, f) => say(`${label}: ${msg}`, f * 0.3));
@@ -695,6 +700,35 @@
       compare[c.id] = { label: c.label, theta: fmtTheta(c.theta), train: trn.stats, holdout: ho.stats, holdoutRecent: tradeStats(ho.trades.filter((x) => x.t >= recentStart)), perBarTrain: summary(pbT), perBarHoldout: summary(pbH) };
       if (c.id === 'tuned') finalSeq = { train: trn, holdout: ho };
     }
+    // Random entries, same rules: the average long / short outcome of the formula's exit
+    // setup over EVERY holdout bar, mixed in the formula's own long/short proportion. A
+    // falling market makes any short look good; skill = avg R minus this.
+    const randomBase = (key, t0) => {
+      let sl = 0, nl = 0, ss = 0, ns = 0;
+      for (const co of coins) {
+        const i0 = B.lowerBound(co.t, Math.max(t0, holdStart)), i1 = B.upperBound(co.t, endT) - 1;
+        for (let i = i0; i <= i1; i++) {
+          if (!co.ok[i]) continue;
+          const a = co.out[key].R[i * 2], b = co.out[key].R[i * 2 + 1];
+          if (a === a) { sl += a; nl++; }
+          if (b === b) { ss += b; ns++; }
+        }
+      }
+      return { long: nl ? sl / nl : 0, short: ns ? ss / ns : 0 };
+    };
+    const withSkill = (st, key, t0) => {
+      if (!st || !st.trades) return st;
+      const rb = randomBase(key, t0), bench = st.longShare * rb.long + (1 - st.longShare) * rb.short;
+      return Object.assign(st, { bench: r4(bench), skill: r4(st.avgR - bench), randomLong: r4(rb.long), randomShort: r4(rb.short) });
+    };
+    withSkill(compare.tuned.holdout, base.key, holdStart);
+    withSkill(compare.tuned.holdoutRecent, base.key, recentStart);
+    if (opts && opts.rival && comboInfo[opts.rival.baseKey]) {
+      const rv = opts.rival, rw = Float64Array.from(rv.weights), rk = rv.baseKey;
+      const rcb = Object.assign({}, comboInfo[rk], { cal: calibrate(train, train.R[rk], rw, null) }), pick1 = () => rcb, ms3 = Sg.maxScore(rw);
+      const trn = seqAll(coins, rw, rv.theta, ms3, pick1, trainStart, selTo), ho = seqAll(coins, rw, rv.theta, ms3, pick1, holdStart, endT);
+      compare.rival = { label: rv.label, theta: fmtTheta(rv.theta), exit: Sg.comboLabel(comboInfo[rk]), train: trn.stats, holdout: withSkill(ho.stats, rk, holdStart), holdoutRecent: withSkill(tradeStats(ho.trades.filter((x) => x.t >= recentStart)), rk, recentStart), perCoin: ho.perCoin };
+    }
     const cellTable = Object.keys(cells).sort().map((cell) => ({
       cell, label: Sg.cellLabel(cell), key: cells[cell].key, fallback: cells[cell].fallback, trainTrades: cells[cell].n, trainAvgR: cells[cell].avgR, trainBaseAvgR: cells[cell].baseAvgR,
       holdout: groupBy(finalSeq.holdout.trades, (t) => t.cell)[cell] || null,
@@ -706,7 +740,7 @@
     say(`${label}: done`, 1);
     return {
       timeframe: tf, label, barMs, generatedAt: new Date().toISOString(), durationSec: Math.round((Date.now() - started) / 100) / 10,
-      symbols, mlSymbols: mlSyms, windows: { trainStart: SETTINGS.trainStart, validationStart: SETTINGS.validationStart, holdoutStart: SETTINGS.holdoutStart, recentStart: SETTINGS.recentStart, end: new Date(endT + barMs).toISOString() },
+      symbols, mlSymbols: mlSyms, windows: { trainStart: W.trainStart, validationStart: W.validationStart, holdoutStart: W.holdoutStart, recentStart: W.recentStart, end: new Date(endT + barMs).toISOString() },
       rows: { fit: fitN, validation: train.N - fitN, train: train.N, holdout: hold.N }, hasFng: !!fng, hasHtf: !!htfData,
       config: {
         H: cfgT.H, maxBars: cfgT.maxBars, feePct: SETTINGS.feePct, makerFeePct: SETTINGS.makerFeePct, kellyCap: SETTINGS.kellyCap, theta: theta.slice(), weights: Array.from(w, r4), maxScore: r4(maxScore), variant: pick.variant,

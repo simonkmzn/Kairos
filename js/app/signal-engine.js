@@ -12,8 +12,9 @@
   const btcCache = new Map(), htfCache = new Map();
   let fngCache = null;
 
-  function configFor(tf) {
-    const C = root.SIGNAL_CONFIG;
+  // set: 'main' (config/signal.js) or 'meme' (config/meme.js, the meme section's own formula).
+  function configFor(tf, set) {
+    const C = set === 'meme' ? root.MEME_CONFIG : root.SIGNAL_CONFIG;
     const t = C && C.timeframes && C.timeframes[tf];
     return t && t.config && t.config.weights && t.config.weights.length === NS && t.config.combos && t.config.base ? t : null;
   }
@@ -79,8 +80,8 @@
     return promise;
   }
 
-  async function analyze(symbol, tf) {
-    const cfg = configFor(tf);
+  async function analyze(symbol, tf, set) {
+    const cfg = configFor(tf, set);
     if (!cfg) return null;
     const tfDef = F.TIMEFRAMES[tf], barMs = tfDef.barMs;
     const [btc, fng, htf] = await Promise.all([btcContext(tf), fngValues(), tf === '1d' ? null : htfContext(symbol)]);
@@ -88,7 +89,10 @@
     if (symbol === 'BTCUSDT') {
       ({ klines: kl, rates, series, feat } = btc);
     } else {
-      [kl, rates] = await Promise.all([Dt.klines(symbol, tf, 1000), Dt.funding(symbol, 100)]);
+      // The meme formula was tuned with funding from the 1000-unit perps (1000PEPEUSDT ...);
+      // the main formula was not, so it keeps reading the plain symbol.
+      const meme = set === 'meme' ? Dt.MEME_COINS.find((c) => c.symbol === symbol) : null;
+      [kl, rates] = await Promise.all([Dt.klines(symbol, tf, 1000), Dt.funding((meme && meme.futures) || symbol, 100)]);
       series = F.toSeries(kl.closed);
       feat = F.compute(kl.closed, tfDef, btc.feat, rates);
       ctx = btc.ctx;
@@ -107,7 +111,7 @@
       bars.push({ i, t: series.t[i], close: series.close[i], score: Sg.composite(sig.S, i * NS, w), atr: sig.atr[i], atrPos: sig.atrPos[i], support: sig.support[i], resistance: sig.resistance[i] });
     }
     return {
-      symbol, tf, barMs, t: series.t[last], close: series.close[last], forming: kl.forming,
+      symbol, tf, set: set || 'main', barMs, t: series.t[last], close: series.close[last], forming: kl.forming,
       atr: sig.atr[last], support: sig.support[last], resistance: sig.resistance[last], atrPos: sig.atrPos[last], rsi: sig.rsi[last],
       fng: sig.fng[last], fngSource: fng.source, fomcHours: K.calendar.untilFomc(Date.now()) / 3600000, htfAlign: sig.htfAlign[last],
       S, scoreTested: Sg.composite(S, 0, w), maxScore: c.maxScore, theta: c.theta, ml: ml[last], bars,

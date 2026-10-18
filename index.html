@@ -18,6 +18,7 @@
       <header class="pane-head">
         <span class="pane-title">Chart · Binance</span>
         <div class="chart-controls">
+          <div class="tfs sets" id="sets" role="radiogroup" aria-label="Section"></div>
           <select class="coin" id="coin" aria-label="Coin"></select>
           <div class="tfs" id="tfs" role="radiogroup" aria-label="Timeframe"></div>
         </div>
@@ -66,7 +67,7 @@
       <div class="pane-body" id="breakdown"></div>
     </section>
     <section class="pane" id="tested-pane">
-      <header class="pane-head"><span class="pane-title">Tested on unseen data</span><a href="tune.html">Full report &rarr;</a></header>
+      <header class="pane-head"><span class="pane-title">Tested on unseen data</span><a href="tune.html" id="report-link">Full report &rarr;</a></header>
       <div class="pane-body" id="tested"></div>
     </section>
   </aside>
@@ -80,6 +81,7 @@
 <script src="js/core/calendar.js"></script>
 <script src="js/core/signal.js"></script>
 <script src="config/signal.js"></script>
+<script src="config/meme.js"></script>
 <script src="js/app/data.js"></script>
 <script src="js/app/news.js"></script>
 <script src="js/app/signal-engine.js"></script>

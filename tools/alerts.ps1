@@ -6,63 +6,83 @@
 #   alerts.ps1 -Preview print the alerts for the latest trade and the latest close, send nothing
 #   alerts.ps1          send every alert not sent yet: TAKE IT when the capped book opens a
 #                       trade, and a message when one closes (CLOSE NOW for the time-out)
-# tools\alerts.json and tools\alerts-sent.json stay on this PC (.gitignore): anyone who
-# knows the channel name could read the alerts.
-param([switch]$Setup, [switch]$Test, [switch]$Preview)
+#   -Set meme           the same for the meme section, on its own channel (topicMeme)
+# tools\alerts.json and tools\alerts-sent*.json stay on this PC (.gitignore): anyone who
+# knows a channel name could read the alerts.
+param([switch]$Setup, [switch]$Test, [switch]$Preview, [ValidateSet('main', 'meme')][string]$Set = 'main')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$meme = $Set -eq 'meme'
 $cfgFile = Join-Path $root 'tools\alerts.json'
-$sentFile = Join-Path $root 'tools\alerts-sent.json'
-$fwFile = Join-Path $root 'results\forward.json'
+$sentFile = Join-Path $root $(if ($meme) { 'tools\alerts-sent-meme.json' } else { 'tools\alerts-sent.json' })
+$fwFile = Join-Path $root $(if ($meme) { 'results\forward-meme.json' } else { 'results\forward.json' })
 $logFile = Join-Path $root 'results\logger.log'
 $utf8 = New-Object Text.UTF8Encoding $false
 $inv = [Globalization.CultureInfo]::InvariantCulture
+$pre = if ($meme) { 'MEME ' } else { '' }
 
 function Log($m) {
   $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $m"
   Add-Content -Path $logFile -Value $line
   Write-Host $line
 }
-
-if ($Setup) {
-  if (Test-Path $cfgFile) { $cfg = Get-Content $cfgFile -Raw | ConvertFrom-Json; Write-Host "Already set up. Channel: $($cfg.topic)"; exit 0 }
+function NewTopic($prefix) {
   $chars = 'abcdefghijkmnpqrstuvwxyz23456789'.ToCharArray()
   $bytes = New-Object byte[] 16
   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  $topic = 'signal-terminal-' + (-join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] }))
-  $cfg = [ordered]@{ server = 'https://ntfy.sh'; topic = $topic; site = 'https://simonkmzn.github.io/Kairos/'; maxEntryAgeHours = 8; maxExitAgeHours = 24 }
+  $prefix + (-join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] }))
+}
+
+if ($Setup) {
+  if (Test-Path $cfgFile) {
+    $cfg = Get-Content $cfgFile -Raw | ConvertFrom-Json
+    if ($meme -and -not $cfg.topicMeme) {
+      $cfg | Add-Member -NotePropertyName topicMeme -NotePropertyValue (NewTopic 'signal-memes-')
+      [IO.File]::WriteAllText($cfgFile, ($cfg | ConvertTo-Json), $utf8)
+    }
+    Write-Host "Channel: $(if ($meme) { $cfg.topicMeme } else { $cfg.topic })"
+    exit 0
+  }
+  $cfg = [ordered]@{ server = 'https://ntfy.sh'; topic = (NewTopic 'signal-terminal-'); site = 'https://simonkmzn.github.io/Kairos/'; maxEntryAgeHours = 8; maxExitAgeHours = 24 }
+  if ($meme) { $cfg.topicMeme = NewTopic 'signal-memes-' }
   [IO.File]::WriteAllText($cfgFile, ($cfg | ConvertTo-Json), $utf8)
-  Write-Host "Channel: $topic"
+  Write-Host "Channel: $(if ($meme) { $cfg.topicMeme } else { $cfg.topic })"
   exit 0
 }
 
 if (-not (Test-Path $cfgFile)) { exit 0 }   # alerts not set up: nothing to do
 $cfg = Get-Content $cfgFile -Raw | ConvertFrom-Json
+$topic = if ($meme) { $cfg.topicMeme } else { $cfg.topic }
+if (-not $topic) { exit 0 }                  # this section's alerts not set up
+$siteHash = if ($meme) { '#memes/' } else { '#' }
 
 function Send($title, $message, [int]$priority, $tags, $click) {
-  $body = [ordered]@{ topic = $cfg.topic; title = $title; message = $message; priority = $priority; tags = @($tags) }
+  $body = [ordered]@{ topic = $topic; title = $title; message = $message; priority = $priority; tags = @($tags) }
   if ($click) { $body.click = $click }
   $json = $body | ConvertTo-Json -Compress
   Invoke-RestMethod -Uri $cfg.server -Method Post -Body $utf8.GetBytes($json) -ContentType 'application/json; charset=utf-8' -TimeoutSec 20 | Out-Null
 }
 
 if ($Test) {
-  Send 'Signal Terminal: test' "Alerts are working. You'll get TAKE IT here when the 4H max-3 record opens a trade, and a message when one closes." 3 @('white_check_mark') $cfg.site
+  if ($meme) { Send 'Signal Terminal: meme test' "Meme alerts are working. You'll get MEME TAKE IT here when the meme section's max-3 record opens a trade, and a message when one closes." 3 @('white_check_mark') "$($cfg.site)#memes" }
+  else { Send 'Signal Terminal: test' "Alerts are working. You'll get TAKE IT here when the 4H max-3 record opens a trade, and a message when one closes." 3 @('white_check_mark') $cfg.site }
   Write-Host 'Test alert sent.'
   exit 0
 }
+if (-not (Test-Path $fwFile)) { exit 0 }
 
 # ---------- read the capped book (forward.json can outgrow ConvertFrom-Json's 2 MB limit) ----------
 Add-Type -AssemblyName System.Web.Extensions
 $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
 $ser.MaxJsonLength = [int]::MaxValue
 $fw = $ser.DeserializeObject([IO.File]::ReadAllText($fwFile))
-$book = $null
-if ($fw.ContainsKey('book') -and $fw['book'] -and $fw['book'].ContainsKey('4h')) { $book = $fw['book']['4h'] }
+$book = $null; $tf = $null
+if ($fw.ContainsKey('book') -and $fw['book'] -and $fw['book'].Keys.Count) { $tf = @($fw['book'].Keys)[0]; $book = $fw['book'][$tf] }
 if (-not $book) { exit 0 }
 $trades = @($book['trades'])
-$barMs = 4 * 3600000
+$barMs = @{ '1h' = 3600000; '4h' = 14400000; '1d' = 86400000 }[$tf]
+$tfLabel = $tf.ToUpper()
 $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
 function When([long]$ms) { [DateTimeOffset]::FromUnixTimeMilliseconds($ms).LocalDateTime.ToString('ddd MMM d, HH:mm', $inv) }
@@ -87,7 +107,7 @@ function EntryAlert($t) {
   $closeMs = [long]$t['t'] + $barMs   # the candle close the trade was entered at
   $ageH = ($nowMs - $closeMs) / 3600000
   $entry = [double]$t['entry']; $sl = [double]$t['slDist']; $side = [int]$t['side']; $id = "$($t['id'])"
-  $lines = @("Entry ~$(Px $entry) (4H candle closed $(When $closeMs))")
+  $lines = @("Entry ~$(Px $entry) ($tfLabel candle closed $(When $closeMs))")
   if ($ageH -gt 1.5) { $lines += "Signal is $([math]::Round($ageH, 1)) hours old - check the price is still near the entry." }
   $lines += "Stop $(Px ($entry - $side * $sl)) ($(Pct (-$side * $sl / $entry)))"
   if (Has $t 'target') { $tgt = [double]$t['target']; $lines += "Target $(Px $tgt) ($(Pct ($side * ($tgt - $entry) / $entry)))" } else { $lines += 'No fixed target: trailing stop' }
@@ -99,17 +119,17 @@ function EntryAlert($t) {
   $others = @($trades | Where-Object { "$($_['id'])" -ne $id -and "$($_['status'])" -eq 'open' -and [long]$_['t'] -le [long]$t['t'] } | ForEach-Object { "$(Coin $_) $((SideOf $_).ToLower())" })
   $slot = if (Has $t 'slot') { [int]$t['slot'] } else { $others.Count + 1 }
   $lines += "Slot $slot of $($book['cap'])$(if ($others.Count) { ': also ' + ($others -join ', ') } else { '' })"
-  @{ title = "TAKE IT: $(Coin $t) $(SideOf $t) (4H)"; message = ($lines -join "`n"); priority = 4; tag = $(if ($side -gt 0) { 'chart_with_upwards_trend' } else { 'chart_with_downwards_trend' }); click = "$($cfg.site)#$(Coin $t)/4h"; ageH = $ageH }
+  @{ title = "${pre}TAKE IT: $(Coin $t) $(SideOf $t) ($tfLabel)"; message = ($lines -join "`n"); priority = 4; tag = $(if ($side -gt 0) { 'chart_with_upwards_trend' } else { 'chart_with_downwards_trend' }); click = "$($cfg.site)$siteHash$(Coin $t)/$tf"; ageH = $ageH }
 }
 function ExitAlert($t) {
   $kind = [int]$t['kind']
   $r = [double]$t['R']; $rs = $r.ToString('+0.00;-0.00', $inv) + 'R'
   $name = "$(Coin $t) $((SideOf $t).ToLower())"
   $a = switch ($kind) {
-    0 { @{ title = "CLOSE NOW: $name time-out ($rs)"; message = "5 days are up: close this position at market now. Result so far $rs. The slot is free again."; priority = 4; tag = 'alarm_clock'; click = "$($cfg.site)#$(Coin $t)/4h" } }
-    1 { @{ title = "TARGET HIT: $name $rs"; message = "Price reached the take-profit at $(Px $t['target']). If your target order was in, it filled. The slot is free again."; priority = 3; tag = 'white_check_mark'; click = $null } }
-    2 { @{ title = "TRAILING STOP HIT: $name $rs"; message = 'Price came back to the trailing stop. Closed in profit. The slot is free again.'; priority = 3; tag = 'white_check_mark'; click = $null } }
-    default { @{ title = "STOPPED OUT: $name $rs"; message = "Price hit the stop at $(Px ([double]$t['entry'] - [int]$t['side'] * [double]$t['slDist'])). A normal loss: the formula is right about 45% of the time and makes its money on the bigger winners. The slot is free again."; priority = 3; tag = 'x'; click = $null } }
+    0 { @{ title = "${pre}CLOSE NOW: $name time-out ($rs)"; message = "Time is up ($([long]$t['maxBars'] * $barMs / 86400000) days): close this position at market now. Result so far $rs. The slot is free again."; priority = 4; tag = 'alarm_clock'; click = "$($cfg.site)$siteHash$(Coin $t)/$tf" } }
+    1 { @{ title = "${pre}TARGET HIT: $name $rs"; message = "Price reached the take-profit at $(Px $t['target']). If your target order was in, it filled. The slot is free again."; priority = 3; tag = 'white_check_mark'; click = $null } }
+    2 { @{ title = "${pre}TRAILING STOP HIT: $name $rs"; message = 'Price came back to the trailing stop. Closed in profit. The slot is free again.'; priority = 3; tag = 'white_check_mark'; click = $null } }
+    default { @{ title = "${pre}STOPPED OUT: $name $rs"; message = "Price hit the stop at $(Px ([double]$t['entry'] - [int]$t['side'] * [double]$t['slDist'])). A normal loss: the formula is right about 45% of the time and makes its money on the bigger winners. The slot is free again."; priority = 3; tag = 'x'; click = $null } }
   }
   $a.ageH = ($nowMs - ([long]$t['exitT'] + $(if ($kind -eq 0) { $barMs } else { 0 }))) / 3600000
   $a
@@ -129,7 +149,7 @@ foreach ($t in $trades) {
     [void]$entrySet.Add($id)
     $a = EntryAlert $t
     if (-not $first -and $a.ageH -le $cfg.maxEntryAgeHours) {
-      try { Send $a.title $a.message $a.priority @($a.tag) $a.click; Log "alert sent: TAKE IT $(Coin $t) $((SideOf $t).ToLower())"; $count++ }
+      try { Send $a.title $a.message $a.priority @($a.tag) $a.click; Log "alert sent: ${pre}TAKE IT $(Coin $t) $((SideOf $t).ToLower())"; $count++ }
       catch { [void]$entrySet.Remove($id); Log "alert failed (will retry): $($_.Exception.Message)" }
     }
   }

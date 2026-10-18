@@ -106,6 +106,7 @@ function PushToGitHub {
   Push-Location $root
   try {
     & $git add results/forward.json results/logger-runs.json results/logger-status.json results/logger.log 2>&1 | Out-Null
+    if (Test-Path (Join-Path $root 'results\forward-meme.json')) { & $git add results/forward-meme.json 2>&1 | Out-Null }
     $staged = & $git diff --cached --name-only 2>&1
     if (-not $staged) { return }
     & $git -c user.name='Signal Terminal logger' -c user.email='logger@localhost' commit -m "forward test: sweep $(Get-Date -Format 'yyyy-MM-dd HH:mm')" 2>&1 | Out-Null
@@ -127,7 +128,10 @@ if ($done) {
   RecordRun $true 'sweep saved' $s
   # Phone alerts (tools\alerts.ps1; does nothing until set up with -Setup).
   $alerts = Join-Path $root 'tools\alerts.ps1'
-  if (Test-Path $alerts) { try { & $alerts } catch { Log "alerts error: $($_.Exception.Message)" } }
+  if (Test-Path $alerts) {
+    try { & $alerts } catch { Log "alerts error: $($_.Exception.Message)" }
+    try { & $alerts -Set meme } catch { Log "meme alerts error: $($_.Exception.Message)" }
+  }
   PushToGitHub
   exit 0
 }

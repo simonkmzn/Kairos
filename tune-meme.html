@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meme Engine · Tuning &amp; Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/terminal.css">
+</head>
+<body>
+<main class="report">
+  <div class="pane-head" style="border:1px solid var(--line);background:var(--pane)">
+    <span class="pane-title">Meme engine · tuning &amp; results</span>
+    <a href="index.html#memes">← Terminal</a>
+  </div>
+
+  <section class="pane">
+    <div class="pane-head"><span class="pane-title">Run</span></div>
+    <div class="pane-body">
+      <p>Builds the meme section's own formula from the meme coins only — same 23 signals, same search, same 27 exit setups as the main formula. Most memes are young, so the split is later: tuned on <b>2021-01-01 → 2024-06-30</b>, chosen on <b>2024-07-01 → 2025-06-30</b>, measured on <b>2025-07-01 → today</b> (holdout), which plays no part in any choice. The main formula runs through the same coins and holdout for a like-for-like comparison. Writes <code>config/meme.js</code> only — the main formula is never touched. Needs <code>serve.cmd</code>.</p>
+      <div style="margin:6px 0 10px">
+        <label class="opt"><input type="checkbox" value="1d" checked> 1D</label>
+        <label class="opt"><input type="checkbox" value="4h" checked> 4H</label>
+        <label class="opt"><input type="checkbox" value="1h" checked> 1H</label>
+      </div>
+      <button class="tbtn primary" id="run">Tune meme engine</button>
+      <div class="bar"><div id="bar"></div></div>
+      <div id="status" class="muted">Idle.</div>
+      <div id="log" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <div id="report"></div>
+</main>
+<script>window.TUNE_SET = 'meme';</script>
+<script src="js/core/indicators.js"></script>
+<script src="js/core/features.js"></script>
+<script src="js/core/model.js"></script>
+<script src="js/core/backtest.js"></script>
+<script src="js/core/research.js"></script>
+<script src="js/core/calendar.js"></script>
+<script src="js/core/signal.js"></script>
+<script src="js/core/tuner.js"></script>
+<script src="js/app/data.js"></script>
+<script src="config/signal.js"></script>
+<script src="results/tuning-meme.js"></script>
+<script src="js/tune-page.js"></script>
+</body>
+</html>

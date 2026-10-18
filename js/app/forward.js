@@ -5,101 +5,36 @@
  * that follow. Only candles that closed after the engine was last tuned
  * count, so nothing in the log was ever peeked at.
  *
- * Stored in results/forward.json through the local server when it is running,
- * mirrored in this browser's localStorage otherwise.
+ * One record per section: the main coins (results/forward.json, K.forward) and the
+ * meme coins with their own formula (results/forward-meme.json, K.forwardMeme).
+ * Stored through the local server when it is running, mirrored in this browser's
+ * localStorage otherwise.
  */
 (function (root) {
   'use strict';
   const K = root.KAIROS;
   const Sg = K.signal, Dt = K.data, F = K.features;
   const TFS = ['1h', '4h', '1d'];
-  const KEY = 'terminal.forward';
   const FEE = 0.0007;
   const r4 = (v) => (Number.isFinite(v) ? Math.round(v * 1e4) / 1e4 : v);
   // Prices keep significant digits, not decimals: PEPE trades at $0.000004, where 4
   // decimals rounded every stop distance to zero.
   const rp = (v) => (Number.isFinite(v) ? +v.toPrecision(8) : v);
-  // Trade cap: at most `cap` positions open across all coins, strongest signals first,
-  // risking `risk` of the account each. Tested in the lab on the 4H formula (holdout, all
-  // coins on one book: +0.14R/trade vs +0.05R uncapped). Kept as a second record next to
-  // the uncapped one, so nothing already logged is reset.
-  const BOOK = { tfs: ['4h'], cap: 3, risk: 0.02 };
   // Served from anywhere but this PC (e.g. GitHub Pages) = a read-only mirror: show the
   // PC's record, never start a second one. Keeping one source of truth matters more than
   // logging a few extra trades.
   const mirror = typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && !/^(localhost|127\.0\.0\.1|\[?::1\]?)$/.test(location.hostname);
-  const state = { trades: [], book: {}, benchAcc: {}, startedAt: null, loaded: false, server: false, mirror, lastSweep: {}, lastSweepAt: null, sweeping: false, error: null, bench: {}, runs: [], logger: null };
 
-  // ---------------- storage ----------------
-  function mergeTrades(a, b) {
-    const map = new Map();
-    for (const t of a) map.set(t.id, t);
-    for (const t of b) {
-      const cur = map.get(t.id);
-      if (!cur || (cur.status === 'open' && t.status === 'closed') || (t.updatedAt || 0) > (cur.updatedAt || 0)) map.set(t.id, t);
-    }
-    return [...map.values()].sort((x, y) => x.t - y.t);
-  }
-  async function load() {
-    let local = null, remote = null;
-    try { local = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { /* blocked */ }
-    try {
-      const r = await fetch('results/forward.json', { cache: 'no-store' });
-      state.server = true;
-      if (r.ok) remote = await r.json();
-    } catch (e) {
-      state.server = false;
-    }
-    const a = (local && local.trades) || [], b = (remote && remote.trades) || [];
-    // Trades with no stop distance were logged by the old 4-decimal rounding (PEPE) and
-    // could never be scored; drop them and the next sweep re-logs that coin correctly.
-    state.trades = (mirror ? b : mergeTrades(a, b)).filter((t) => t.slDist > 0);
-    state.bench = (remote && remote.bench) || (!mirror && local && local.bench) || {};
-    state.benchAcc = (remote && remote.benchAcc) || (!mirror && local && local.benchAcc) || {};
-    // Per timeframe, whichever copy of the capped book has got further.
-    const lb = (!mirror && local && local.book) || {}, rb = (remote && remote.book) || {};
-    state.book = {};
-    for (const tf of new Set([...Object.keys(lb), ...Object.keys(rb)])) state.book[tf] = !rb[tf] || (lb[tf] && lb[tf].through > rb[tf].through) ? lb[tf] : rb[tf];
-    await loadLoggerStatus();
-    state.startedAt = Math.min(local && local.startedAt ? local.startedAt : Infinity, remote && remote.startedAt ? remote.startedAt : Infinity);
-    if (!Number.isFinite(state.startedAt)) state.startedAt = Date.now();
-    state.loaded = true;
-    return state;
-  }
-  // Written by the unattended logger (tools/logger.ps1) after each of its sweeps.
-  async function loadLoggerStatus() {
-    try {
-      const r = await fetch('results/logger-status.json', { cache: 'no-store' });
-      state.logger = r.ok ? await r.json() : null;
-    } catch (e) {
-      state.logger = null;
-    }
-    try {
-      const r = await fetch('results/logger-runs.json', { cache: 'no-store' });
-      state.runs = r.ok ? (await r.json()).runs || [] : [];
-    } catch (e) {
-      state.runs = [];
-    }
-  }
-  async function reportStatus(error) {
-    const status = { at: Date.now(), trades: state.trades.length, open: state.trades.filter((t) => t.status === 'open').length, closed: state.trades.filter((t) => t.status === 'closed').length, error: error || state.error || null };
-    try { await fetch('api/save?path=results/logger-status.json', { method: 'POST', body: JSON.stringify(status), headers: { 'Content-Type': 'application/json' } }); } catch (e) { /* no server */ }
-    state.logger = status;
-    return status;
-  }
-  async function save() {
-    const data = { version: 1, startedAt: state.startedAt, savedAt: Date.now(), bench: state.bench, benchAcc: state.benchAcc, trades: state.trades, book: state.book };
-    if (state.mirror) return;
-    const json = JSON.stringify(data);
-    try { localStorage.setItem(KEY, json); } catch (e) { /* blocked */ }
-    if (!state.server) return;
-    try {
-      const r = await fetch('api/save?path=results/forward.json', { method: 'POST', body: json, headers: { 'Content-Type': 'application/json' } });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-    } catch (e) {
-      state.server = false;
-    }
-  }
+  // Trade cap ("book"): at most `cap` positions open across the section's coins, strongest
+  // signals first, risking `risk` of the account each. Tested in the lab on the main 4H
+  // formula (holdout, all coins on one book: +0.14R/trade vs +0.05R uncapped). Kept as a
+  // second record next to the uncapped one. The meme section mirrors the rule on 1D, the
+  // timeframe where its own formula beat random entries most clearly on unseen data
+  // (skill +0.057R vs +0.020R on 1H; 4H showed none).
+  const SETS = {
+    main: { key: 'terminal.forward', file: 'results/forward.json', coins: () => Dt.COINS, config: () => root.SIGNAL_CONFIG, book: { tfs: ['4h'], cap: 3, risk: 0.02 } },
+    meme: { key: 'terminal.forward.meme', file: 'results/forward-meme.json', coins: () => Dt.MEME_COINS, config: () => root.MEME_CONFIG, book: { tfs: ['1d'], cap: 3, risk: 0.02 } },
+  };
 
   // ---------------- scoring (mirrors tuner.outcomes) ----------------
   // kind: 1 target, -1 stop, 2 trailed out in profit, 0 time-out.
@@ -139,235 +74,6 @@
     return lo < t.length && t[lo] === v ? lo : -1;
   }
 
-  // A position entered at the close of bar b, with the exit setup the engine picks for it.
-  function newTrade(a, c, b, call) {
-    const sym = a.symbol, tf = a.tf;
-    const cell = Sg.cellOf(b.atrPos, call, b.score, c.theta, c.maxScore);
-    const key = c.adaptive && c.policy && c.policy[cell] && !c.policy[cell].fallback ? c.policy[cell].key : c.base.key;
-    const cb = c.combos[key];
-    const lv = Sg.levels(b.close, b.atr, call, cb, { support: b.support, resistance: b.resistance });
-    const p = Sg.probability(b.score, call, cb.cal), bb = cb.rr || cb.avgWinR || 1;
-    return {
-      id: `${sym}|${tf}|${b.t}`, symbol: sym, tf, side: call, t: b.t, entry: b.close, slDist: rp(lv.slDist), stop: rp(lv.stop), target: lv.target === null ? null : rp(lv.target),
-      combo: key, stopMode: cb.stopMode, slAtr: cb.slAtr, rr: cb.rr, be: !!cb.be, maxBars: c.maxBars,
-      p: r4(p), b: r4(bb), risk: r4(Sg.kellyRisk(p, bb, c.kellyCap || 0.02)), score: r4(b.score), cfgAt: root.SIGNAL_CONFIG.generatedAt, gated: c.edge === 'none',
-      status: 'open', loggedAt: Date.now(),
-    };
-  }
-
-  // Resolve open trades and log new sequential entries for one coin / timeframe.
-  function processCoin(a, cfgWrap, sinceOverride) {
-    const c = cfgWrap.config, tf = a.tf, sym = a.symbol, barMs = a.barMs;
-    const cfgAt = Date.parse(root.SIGNAL_CONFIG.generatedAt);
-    const eligibleFrom = sinceOverride || Math.max(cfgAt, state.startedAt);
-    const mine = state.trades.filter((t) => t.symbol === sym && t.tf === tf).sort((x, y) => x.t - y.t);
-    let changed = false;
-    for (const tr of mine) {
-      if (tr.status !== 'open') continue;
-      const i0 = indexOfTime(a.series.t, tr.t);
-      if (i0 < 0) { if (!tr.stale) { tr.stale = true; changed = true; } continue; }
-      const res = resolveTrade(tr, a.series, i0);
-      if (res.status === 'closed' || res.unrealized !== tr.unrealized || res.stopNow !== tr.stopNow) {
-        Object.assign(tr, res);
-        changed = true;
-      }
-    }
-    if (mine.some((t) => t.status === 'open')) return changed;
-    let lastExitT = -Infinity, lastEntryT = -Infinity;
-    for (const t of mine) {
-      if (t.t > lastEntryT) lastEntryT = t.t;
-      if (t.status === 'closed' && t.exitT > lastExitT) lastExitT = t.exitT;
-    }
-    for (const b of a.bars) {
-      if (b.t + barMs < eligibleFrom || b.t <= lastEntryT || b.t <= lastExitT) continue;
-      const call = Sg.decide(b.score, c.theta);
-      if (!call) continue;
-      const tr = newTrade(a, c, b, call);
-      Object.assign(tr, resolveTrade(tr, a.series, b.i));
-      state.trades.push(tr);
-      changed = true;
-      if (tr.status === 'open') break;
-      lastExitT = tr.exitT;
-    }
-    if (changed) state.trades.sort((x, y) => x.t - y.t);
-    return changed;
-  }
-
-  /*
-   * The capped book: every coin on one clock, the same rule the lab tested
-   * (experiments.js simulatePortfolio). At each candle close, positions still open
-   * (or exiting on that very candle) hold their slots; signals on free coins compete
-   * for what is left, strongest |score| first. `through` is the last candle decided,
-   * so each candle is decided exactly once, and only when every coin has it.
-   */
-  function processBook(tf, cfgWrap, analyses, sinceOverride) {
-    const c = cfgWrap.config;
-    let book = state.book[tf];
-    if (!book || book.cap !== BOOK.cap) book = state.book[tf] = { cap: BOOK.cap, through: 0, trades: [] };
-    const eligibleFrom = sinceOverride || Math.max(Date.parse(root.SIGNAL_CONFIG.generatedAt), state.startedAt);
-    const bySym = new Map(analyses.map((a) => [a.symbol, a]));
-    for (const tr of book.trades) {
-      if (tr.status !== 'open') continue;
-      const a = bySym.get(tr.symbol), i0 = a ? indexOfTime(a.series.t, tr.t) : -1;
-      if (i0 < 0) { tr.stale = true; continue; }
-      Object.assign(tr, resolveTrade(tr, a.series, i0));
-    }
-    const upTo = Math.min(...analyses.map((a) => a.t));
-    const byT = new Map();
-    for (const a of analyses) {
-      for (const b of a.bars) {
-        if (b.t <= book.through || b.t > upTo || b.t + a.barMs < eligibleFrom) continue;
-        const call = Sg.decide(b.score, c.theta);
-        if (!call) continue;
-        if (!byT.has(b.t)) byT.set(b.t, []);
-        byT.get(b.t).push({ a, b, call });
-      }
-    }
-    for (const t of [...byT.keys()].sort((x, y) => x - y)) {
-      const active = book.trades.filter((p) => !p.stale && (p.status === 'open' || p.exitT >= t));
-      if (active.length >= book.cap) continue;
-      const busy = new Set(active.map((p) => p.symbol));
-      const cands = byT.get(t).filter((x) => !busy.has(x.a.symbol)).sort((x, y) => Math.abs(y.b.score) - Math.abs(x.b.score));
-      for (const x of cands) {
-        if (active.length >= book.cap) break;
-        const tr = newTrade(x.a, c, x.b, x.call);
-        tr.risk = BOOK.risk;
-        tr.slot = active.length + 1;
-        Object.assign(tr, resolveTrade(tr, x.a.series, x.b.i));
-        book.trades.push(tr);
-        active.push(tr);
-      }
-    }
-    if (Number.isFinite(upTo) && upTo > book.through) book.through = upTo;
-    book.trades.sort((x, y) => x.t - y.t);
-  }
-
-  /*
-   * The honest benchmark, matched to what the system actually did.
-   *
-   * An earlier version scored "every bar the formula fired on" with the BASE exit
-   * setup and compared that to every bar. That flattered nothing and misled badly:
-   * the real trades are sequential (one per coin) and may use the adaptive exit
-   * setup, so it was comparing two things the system never does. This version takes
-   * the trades it genuinely took and asks: entering at a RANDOM bar instead, with
-   * that trade's own stop, target and direction mix, what would you have made?
-   */
-  // Accumulators cover every exit setup the engine can choose (base + policy), not
-  // just the ones already seen, so trades logged during this very sweep are scored
-  // too instead of lagging a cycle behind.
-  // They persist across sweeps (in results/forward.json) and count each bar once. A sweep
-  // only sees the last 300 candles, so a fresh tally every time compared trades from the
-  // whole run against random entries from only the last ~12 days on 1H — a rally week's
-  // trades against a flat week's dart throws. `from` is the first bar counted; finishBench
-  // only scores trades entered from then on, so both sides cover the same days.
-  function benchStart(cfgWrap, tf) {
-    const c = cfgWrap.config, cfgAt = root.SIGNAL_CONFIG.generatedAt, keys = new Set([c.base.key]);
-    if (c.policy) for (const cell in c.policy) keys.add(c.policy[cell].key);
-    let bench = state.benchAcc[tf];
-    if (!bench || bench.cfgAt !== cfgAt || bench.v !== 2) bench = state.benchAcc[tf] = { v: 2, cfgAt, from: null, through: {}, acc: {} };
-    for (const k of keys) if (c.combos[k] && !bench.acc[k]) bench.acc[k] = { L: { n: 0, s: 0, w: 0 }, S: { n: 0, s: 0 } };
-    return bench;
-  }
-  function accumulateBench(a, cfgWrap, bench, sinceOverride) {
-    const c = cfgWrap.config;
-    const eligibleFrom = sinceOverride || Math.max(Date.parse(root.SIGNAL_CONFIG.generatedAt), state.startedAt);
-    const done = bench.through[a.symbol] || -Infinity;
-    let last = done;
-    for (const b of a.bars) {
-      // Same start rule as the trades: a candle counts if it CLOSED after the start.
-      if (b.t + a.barMs < eligibleFrom || b.t <= done || b.i + c.maxBars > a.series.n - 1) continue;
-      if (b.t > last) last = b.t;
-      if (bench.from === null || b.t < bench.from) bench.from = b.t;
-      for (const k in bench.acc) {
-        const cb = c.combos[k];
-        for (const dir of [1, -1]) {
-          const slDist = Sg.stopDistance(cb.stopMode, cb.slAtr, b.atr, dir, b.close, b.support, b.resistance);
-          const res = resolveTrade({ side: dir, slDist, entry: b.close, rr: cb.rr, maxBars: c.maxBars, stopMode: cb.stopMode, be: cb.be }, a.series, b.i);
-          if (res.status !== 'closed') continue;
-          const t = dir > 0 ? bench.acc[k].L : bench.acc[k].S;
-          t.n++;
-          t.s += res.R;
-          if (dir > 0 && res.R > 0) t.w++;
-        }
-      }
-    }
-    if (last > done) bench.through[a.symbol] = last;
-  }
-  function finishBench(bench, trades) {
-    const used = {};
-    for (const t of trades) {
-      if (t.status !== 'closed' || bench.from === null || t.t < bench.from) continue;
-      const u = used[t.combo] || (used[t.combo] = { n: 0, longs: 0, realized: 0 });
-      u.n++;
-      u.realized += t.R;
-      if (t.side > 0) u.longs++;
-    }
-    let realized = 0, expected = 0, n = 0, bars = 0, wins = 0;
-    for (const k in used) {
-      const u = used[k], a = bench.acc[k];
-      if (!a || !a.L.n) continue;
-      const longShare = u.longs / u.n;
-      const avgL = a.L.s / a.L.n, avgS = a.S.n ? a.S.s / a.S.n : 0;
-      expected += (longShare * avgL + (1 - longShare) * avgS) * u.n;
-      realized += u.realized;
-      n += u.n;
-      bars = Math.max(bars, a.L.n);
-      wins += a.L.w;
-    }
-    return {
-      trades: n, bars,
-      realizedAvgR: n ? r4(realized / n) : null,
-      benchAvgR: n ? r4(expected / n) : null,
-      skill: n ? r4((realized - expected) / n) : null,
-      from: bench.from,
-      at: Date.now(),
-    };
-  }
-
-  // Sweep every coin on every timeframe whose latest candle closed since the last sweep.
-  async function sweep(force, opts) {
-    if (state.mirror) return false;
-    if (state.sweeping) return false;
-    state.sweeping = true;
-    state.error = null;
-    const now = Date.now();
-    let changed = false;
-    try {
-      for (const tf of TFS) {
-        const cfg = K.signalEngine.configFor(tf);
-        if (!cfg) continue;
-        const barMs = F.TIMEFRAMES[tf].barMs, lastClose = Math.floor(now / barMs) * barMs;
-        if (!force && (state.lastSweep[tf] || 0) >= lastClose) continue;
-        const bench = benchStart(cfg, tf), analyses = [];
-        let failed = 0;
-        for (const coin of Dt.COINS) {
-          try {
-            const a = await K.signalEngine.analyze(coin.symbol, tf);
-            if (processCoin(a, cfg, opts && opts.since)) changed = true;
-            accumulateBench(a, cfg, bench, opts && opts.since);
-            analyses.push(a);
-          } catch (e) { failed++; state.error = `${coin.ticker} ${tf}: ${e.message}`; }
-        }
-        state.bench[tf] = finishBench(bench, state.trades.filter((t) => t.tf === tf));
-        // The capped book decides a candle only once every coin has it; a coin that failed
-        // to load is retried next sweep (the last 300 candles are always re-checked).
-        if (BOOK.tfs.includes(tf)) {
-          if (!failed && analyses.length) {
-            processBook(tf, cfg, analyses, opts && opts.since);
-            state.bench[`${tf}|cap`] = finishBench(bench, state.book[tf].trades);
-          } else state.error = `${state.error || tf} · trade-cap record waits for every coin`;
-        }
-        state.lastSweep[tf] = lastClose;
-        changed = true;
-      }
-      state.lastSweepAt = Date.now();
-    } finally {
-      state.sweeping = false;
-    }
-    if (changed) await save();
-    return changed;
-  }
-
   function stats(trades) {
     const closed = trades.filter((t) => t.status === 'closed'), open = trades.filter((t) => t.status === 'open');
     let wins = 0, sum = 0, eq = 1, eqK = 1, s2 = 0;
@@ -384,14 +90,323 @@
     return { closed: n, open: open.length, winRate: n ? wins / n : 0, avgR: avg, totalR: sum, tstat: n && sd > 0 ? (avg / sd) * Math.sqrt(n) : 0, return1pct: eq - 1, returnKelly: eqK - 1, unrealizedR: unreal };
   }
 
-  async function clear() {
-    state.trades = [];
-    state.book = {};
-    state.benchAcc = {};
-    state.startedAt = Date.now();
-    state.lastSweep = {};
-    await save();
+  function create(set) {
+    const S = SETS[set], BOOK = S.book;
+    const state = { set, trades: [], book: {}, benchAcc: {}, startedAt: null, loaded: false, server: false, mirror, lastSweep: {}, lastSweepAt: null, sweeping: false, error: null, bench: {}, runs: [], logger: null };
+    const cfgAt = () => Date.parse(S.config().generatedAt);
+
+    // ---------------- storage ----------------
+    function mergeTrades(a, b) {
+      const map = new Map();
+      for (const t of a) map.set(t.id, t);
+      for (const t of b) {
+        const cur = map.get(t.id);
+        if (!cur || (cur.status === 'open' && t.status === 'closed') || (t.updatedAt || 0) > (cur.updatedAt || 0)) map.set(t.id, t);
+      }
+      return [...map.values()].sort((x, y) => x.t - y.t);
+    }
+    async function load() {
+      let local = null, remote = null;
+      try { local = JSON.parse(localStorage.getItem(S.key) || 'null'); } catch (e) { /* blocked */ }
+      try {
+        const r = await fetch(S.file, { cache: 'no-store' });
+        state.server = true;
+        if (r.ok) remote = await r.json();
+      } catch (e) {
+        state.server = false;
+      }
+      const a = (local && local.trades) || [], b = (remote && remote.trades) || [];
+      // Trades with no stop distance were logged by the old 4-decimal rounding (PEPE) and
+      // could never be scored; drop them and the next sweep re-logs that coin correctly.
+      state.trades = (mirror ? b : mergeTrades(a, b)).filter((t) => t.slDist > 0);
+      state.bench = (remote && remote.bench) || (!mirror && local && local.bench) || {};
+      state.benchAcc = (remote && remote.benchAcc) || (!mirror && local && local.benchAcc) || {};
+      // Per timeframe, whichever copy of the capped book has got further.
+      const lb = (!mirror && local && local.book) || {}, rb = (remote && remote.book) || {};
+      state.book = {};
+      for (const tf of new Set([...Object.keys(lb), ...Object.keys(rb)])) state.book[tf] = !rb[tf] || (lb[tf] && lb[tf].through > rb[tf].through) ? lb[tf] : rb[tf];
+      await loadLoggerStatus();
+      state.startedAt = Math.min(local && local.startedAt ? local.startedAt : Infinity, remote && remote.startedAt ? remote.startedAt : Infinity);
+      if (!Number.isFinite(state.startedAt)) state.startedAt = Date.now();
+      state.loaded = true;
+      return state;
+    }
+    // Written by the unattended logger (tools/logger.ps1) after each of its sweeps.
+    async function loadLoggerStatus() {
+      try {
+        const r = await fetch('results/logger-status.json', { cache: 'no-store' });
+        state.logger = r.ok ? await r.json() : null;
+      } catch (e) {
+        state.logger = null;
+      }
+      try {
+        const r = await fetch('results/logger-runs.json', { cache: 'no-store' });
+        state.runs = r.ok ? (await r.json()).runs || [] : [];
+      } catch (e) {
+        state.runs = [];
+      }
+    }
+    // extra: other sections' counts, reported alongside (one logger runs them all).
+    async function reportStatus(error, extra) {
+      const status = Object.assign({ at: Date.now(), trades: state.trades.length, open: state.trades.filter((t) => t.status === 'open').length, closed: state.trades.filter((t) => t.status === 'closed').length, error: error || state.error || null }, extra || {});
+      try { await fetch('api/save?path=results/logger-status.json', { method: 'POST', body: JSON.stringify(status), headers: { 'Content-Type': 'application/json' } }); } catch (e) { /* no server */ }
+      state.logger = status;
+      return status;
+    }
+    async function save() {
+      const data = { version: 1, set, startedAt: state.startedAt, savedAt: Date.now(), bench: state.bench, benchAcc: state.benchAcc, trades: state.trades, book: state.book };
+      if (state.mirror) return;
+      const json = JSON.stringify(data);
+      try { localStorage.setItem(S.key, json); } catch (e) { /* blocked */ }
+      if (!state.server) return;
+      try {
+        const r = await fetch(`api/save?path=${S.file}`, { method: 'POST', body: json, headers: { 'Content-Type': 'application/json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+      } catch (e) {
+        state.server = false;
+      }
+    }
+
+    // A position entered at the close of bar b, with the exit setup the engine picks for it.
+    function newTrade(a, c, b, call) {
+      const sym = a.symbol, tf = a.tf;
+      const cell = Sg.cellOf(b.atrPos, call, b.score, c.theta, c.maxScore);
+      const key = c.adaptive && c.policy && c.policy[cell] && !c.policy[cell].fallback ? c.policy[cell].key : c.base.key;
+      const cb = c.combos[key];
+      const lv = Sg.levels(b.close, b.atr, call, cb, { support: b.support, resistance: b.resistance });
+      const p = Sg.probability(b.score, call, cb.cal), bb = cb.rr || cb.avgWinR || 1;
+      return {
+        id: `${sym}|${tf}|${b.t}`, symbol: sym, tf, side: call, t: b.t, entry: b.close, slDist: rp(lv.slDist), stop: rp(lv.stop), target: lv.target === null ? null : rp(lv.target),
+        combo: key, stopMode: cb.stopMode, slAtr: cb.slAtr, rr: cb.rr, be: !!cb.be, maxBars: c.maxBars,
+        p: r4(p), b: r4(bb), risk: r4(Sg.kellyRisk(p, bb, c.kellyCap || 0.02)), score: r4(b.score), cfgAt: S.config().generatedAt, gated: c.edge === 'none',
+        status: 'open', loggedAt: Date.now(),
+      };
+    }
+
+    // Resolve open trades and log new sequential entries for one coin / timeframe.
+    function processCoin(a, cfgWrap, sinceOverride) {
+      const c = cfgWrap.config, tf = a.tf, sym = a.symbol, barMs = a.barMs;
+      const eligibleFrom = sinceOverride || Math.max(cfgAt(), state.startedAt);
+      const mine = state.trades.filter((t) => t.symbol === sym && t.tf === tf).sort((x, y) => x.t - y.t);
+      let changed = false;
+      for (const tr of mine) {
+        if (tr.status !== 'open') continue;
+        const i0 = indexOfTime(a.series.t, tr.t);
+        if (i0 < 0) { if (!tr.stale) { tr.stale = true; changed = true; } continue; }
+        const res = resolveTrade(tr, a.series, i0);
+        if (res.status === 'closed' || res.unrealized !== tr.unrealized || res.stopNow !== tr.stopNow) {
+          Object.assign(tr, res);
+          changed = true;
+        }
+      }
+      if (mine.some((t) => t.status === 'open')) return changed;
+      let lastExitT = -Infinity, lastEntryT = -Infinity;
+      for (const t of mine) {
+        if (t.t > lastEntryT) lastEntryT = t.t;
+        if (t.status === 'closed' && t.exitT > lastExitT) lastExitT = t.exitT;
+      }
+      for (const b of a.bars) {
+        if (b.t + barMs < eligibleFrom || b.t <= lastEntryT || b.t <= lastExitT) continue;
+        const call = Sg.decide(b.score, c.theta);
+        if (!call) continue;
+        const tr = newTrade(a, c, b, call);
+        Object.assign(tr, resolveTrade(tr, a.series, b.i));
+        state.trades.push(tr);
+        changed = true;
+        if (tr.status === 'open') break;
+        lastExitT = tr.exitT;
+      }
+      if (changed) state.trades.sort((x, y) => x.t - y.t);
+      return changed;
+    }
+
+    /*
+     * The capped book: every coin on one clock, the same rule the lab tested
+     * (experiments.js simulatePortfolio). At each candle close, positions still open
+     * (or exiting on that very candle) hold their slots; signals on free coins compete
+     * for what is left, strongest |score| first. `through` is the last candle decided,
+     * so each candle is decided exactly once, and only when every coin has it.
+     */
+    function processBook(tf, cfgWrap, analyses, sinceOverride) {
+      const c = cfgWrap.config;
+      let book = state.book[tf];
+      if (!book || book.cap !== BOOK.cap) book = state.book[tf] = { cap: BOOK.cap, through: 0, trades: [] };
+      const eligibleFrom = sinceOverride || Math.max(cfgAt(), state.startedAt);
+      const bySym = new Map(analyses.map((a) => [a.symbol, a]));
+      for (const tr of book.trades) {
+        if (tr.status !== 'open') continue;
+        const a = bySym.get(tr.symbol), i0 = a ? indexOfTime(a.series.t, tr.t) : -1;
+        if (i0 < 0) { tr.stale = true; continue; }
+        Object.assign(tr, resolveTrade(tr, a.series, i0));
+      }
+      const upTo = Math.min(...analyses.map((a) => a.t));
+      const byT = new Map();
+      for (const a of analyses) {
+        for (const b of a.bars) {
+          if (b.t <= book.through || b.t > upTo || b.t + a.barMs < eligibleFrom) continue;
+          const call = Sg.decide(b.score, c.theta);
+          if (!call) continue;
+          if (!byT.has(b.t)) byT.set(b.t, []);
+          byT.get(b.t).push({ a, b, call });
+        }
+      }
+      for (const t of [...byT.keys()].sort((x, y) => x - y)) {
+        const active = book.trades.filter((p) => !p.stale && (p.status === 'open' || p.exitT >= t));
+        if (active.length >= book.cap) continue;
+        const busy = new Set(active.map((p) => p.symbol));
+        const cands = byT.get(t).filter((x) => !busy.has(x.a.symbol)).sort((x, y) => Math.abs(y.b.score) - Math.abs(x.b.score));
+        for (const x of cands) {
+          if (active.length >= book.cap) break;
+          const tr = newTrade(x.a, c, x.b, x.call);
+          tr.risk = BOOK.risk;
+          tr.slot = active.length + 1;
+          Object.assign(tr, resolveTrade(tr, x.a.series, x.b.i));
+          book.trades.push(tr);
+          active.push(tr);
+        }
+      }
+      if (Number.isFinite(upTo) && upTo > book.through) book.through = upTo;
+      book.trades.sort((x, y) => x.t - y.t);
+    }
+
+    /*
+     * The honest benchmark, matched to what the system actually did.
+     *
+     * An earlier version scored "every bar the formula fired on" with the BASE exit
+     * setup and compared that to every bar. That flattered nothing and misled badly:
+     * the real trades are sequential (one per coin) and may use the adaptive exit
+     * setup, so it was comparing two things the system never does. This version takes
+     * the trades it genuinely took and asks: entering at a RANDOM bar instead, with
+     * that trade's own stop, target and direction mix, what would you have made?
+     */
+    // Accumulators cover every exit setup the engine can choose (base + policy), not
+    // just the ones already seen, so trades logged during this very sweep are scored
+    // too instead of lagging a cycle behind.
+    // They persist across sweeps (in the record file) and count each bar once. A sweep
+    // only sees the last 300 candles, so a fresh tally every time compared trades from the
+    // whole run against random entries from only the last ~12 days on 1H — a rally week's
+    // trades against a flat week's dart throws. `from` is the first bar counted; finishBench
+    // only scores trades entered from then on, so both sides cover the same days.
+    function benchStart(cfgWrap, tf) {
+      const c = cfgWrap.config, at = S.config().generatedAt, keys = new Set([c.base.key]);
+      if (c.policy) for (const cell in c.policy) keys.add(c.policy[cell].key);
+      let bench = state.benchAcc[tf];
+      if (!bench || bench.cfgAt !== at || bench.v !== 2) bench = state.benchAcc[tf] = { v: 2, cfgAt: at, from: null, through: {}, acc: {} };
+      for (const k of keys) if (c.combos[k] && !bench.acc[k]) bench.acc[k] = { L: { n: 0, s: 0, w: 0 }, S: { n: 0, s: 0 } };
+      return bench;
+    }
+    function accumulateBench(a, cfgWrap, bench, sinceOverride) {
+      const c = cfgWrap.config;
+      const eligibleFrom = sinceOverride || Math.max(cfgAt(), state.startedAt);
+      const done = bench.through[a.symbol] || -Infinity;
+      let last = done;
+      for (const b of a.bars) {
+        // Same start rule as the trades: a candle counts if it CLOSED after the start.
+        if (b.t + a.barMs < eligibleFrom || b.t <= done || b.i + c.maxBars > a.series.n - 1) continue;
+        if (b.t > last) last = b.t;
+        if (bench.from === null || b.t < bench.from) bench.from = b.t;
+        for (const k in bench.acc) {
+          const cb = c.combos[k];
+          for (const dir of [1, -1]) {
+            const slDist = Sg.stopDistance(cb.stopMode, cb.slAtr, b.atr, dir, b.close, b.support, b.resistance);
+            const res = resolveTrade({ side: dir, slDist, entry: b.close, rr: cb.rr, maxBars: c.maxBars, stopMode: cb.stopMode, be: cb.be }, a.series, b.i);
+            if (res.status !== 'closed') continue;
+            const t = dir > 0 ? bench.acc[k].L : bench.acc[k].S;
+            t.n++;
+            t.s += res.R;
+            if (dir > 0 && res.R > 0) t.w++;
+          }
+        }
+      }
+      if (last > done) bench.through[a.symbol] = last;
+    }
+    function finishBench(bench, trades) {
+      const used = {};
+      for (const t of trades) {
+        if (t.status !== 'closed' || bench.from === null || t.t < bench.from) continue;
+        const u = used[t.combo] || (used[t.combo] = { n: 0, longs: 0, realized: 0 });
+        u.n++;
+        u.realized += t.R;
+        if (t.side > 0) u.longs++;
+      }
+      let realized = 0, expected = 0, n = 0, bars = 0, wins = 0;
+      for (const k in used) {
+        const u = used[k], a = bench.acc[k];
+        if (!a || !a.L.n) continue;
+        const longShare = u.longs / u.n;
+        const avgL = a.L.s / a.L.n, avgS = a.S.n ? a.S.s / a.S.n : 0;
+        expected += (longShare * avgL + (1 - longShare) * avgS) * u.n;
+        realized += u.realized;
+        n += u.n;
+        bars = Math.max(bars, a.L.n);
+        wins += a.L.w;
+      }
+      return {
+        trades: n, bars,
+        realizedAvgR: n ? r4(realized / n) : null,
+        benchAvgR: n ? r4(expected / n) : null,
+        skill: n ? r4((realized - expected) / n) : null,
+        from: bench.from,
+        at: Date.now(),
+      };
+    }
+
+    // Sweep every coin on every timeframe whose latest candle closed since the last sweep.
+    async function sweep(force, opts) {
+      if (state.mirror || !S.config()) return false;
+      if (state.sweeping) return false;
+      state.sweeping = true;
+      state.error = null;
+      const now = Date.now();
+      let changed = false;
+      try {
+        for (const tf of TFS) {
+          const cfg = K.signalEngine.configFor(tf, set);
+          if (!cfg) continue;
+          const barMs = F.TIMEFRAMES[tf].barMs, lastClose = Math.floor(now / barMs) * barMs;
+          if (!force && (state.lastSweep[tf] || 0) >= lastClose) continue;
+          const bench = benchStart(cfg, tf), analyses = [];
+          let failed = 0;
+          for (const coin of S.coins()) {
+            try {
+              const a = await K.signalEngine.analyze(coin.symbol, tf, set);
+              if (processCoin(a, cfg, opts && opts.since)) changed = true;
+              accumulateBench(a, cfg, bench, opts && opts.since);
+              analyses.push(a);
+            } catch (e) { failed++; state.error = `${coin.ticker} ${tf}: ${e.message}`; }
+          }
+          state.bench[tf] = finishBench(bench, state.trades.filter((t) => t.tf === tf));
+          // The capped book decides a candle only once every coin has it; a coin that failed
+          // to load is retried next sweep (the last 300 candles are always re-checked).
+          if (BOOK.tfs.includes(tf)) {
+            if (!failed && analyses.length) {
+              processBook(tf, cfg, analyses, opts && opts.since);
+              state.bench[`${tf}|cap`] = finishBench(bench, state.book[tf].trades);
+            } else state.error = `${state.error || tf} · trade-cap record waits for every coin`;
+          }
+          state.lastSweep[tf] = lastClose;
+          changed = true;
+        }
+        state.lastSweepAt = Date.now();
+      } finally {
+        state.sweeping = false;
+      }
+      if (changed) await save();
+      return changed;
+    }
+
+    async function clear() {
+      state.trades = [];
+      state.book = {};
+      state.benchAcc = {};
+      state.startedAt = Date.now();
+      state.lastSweep = {};
+      await save();
+    }
+
+    return { set, state, load, save, sweep, stats, clear, resolveTrade, reportStatus, loadLoggerStatus, TFS, BOOK, coins: S.coins, config: S.config };
   }
 
-  K.forward = { state, load, save, sweep, stats, clear, resolveTrade, reportStatus, loadLoggerStatus, TFS, BOOK };
+  K.forward = create('main');
+  K.forwardMeme = create('meme');
 })(typeof self !== 'undefined' ? self : this);

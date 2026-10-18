@@ -89,6 +89,20 @@ The **FORWARD TEST** pane under the news logs every call the tested formula make
 
 The decision rule: after 2–3 months, if the live column looks like the backtest column, the edge is real enough to trade small; if it doesn't, nothing was lost. Don't re-tune while the forward test runs — re-tuning resets which candles count.
 
+## Meme section (MAIN | MEMES switch above the chart)
+
+Its own coins (DOGE, SHIB, PEPE, FLOKI, BONK, WIF, BOME, PEOPLE, NEIRO, PNUT, TRUMP, PENGU), its own formula (`config/meme.js`, built by `tune-meme.html` with the same signals, search and exits as the main one, on meme coins only), its own forward-test record (`results/forward-meme.json`) and its own alert channel. Memes are young, so the split is later: built on 2021 – mid-2024, chosen on mid-2024 – mid-2025, judged on mid-2025 → now.
+
+Rule set before the results were read: a meme timeframe is live only if, on unseen data, it made money **and** beat random entries with the same long/short mix (a falling market makes any short look good).
+
+| Meme formula, mid-2025 → now | Avg R / trade | Random, same mix | Skill | Main formula on the same coins |
+|---|---|---|---|---|
+| 1D | +0.049R (364 trades) | −0.008R | **+0.057R** | −0.039R |
+| 1H | +0.015R (4,094) | −0.004R | +0.020R | −0.006R |
+| 4H | +0.024R (1,997, 95% shorts) | +0.029R | **−0.004R → gated** | +0.001R |
+
+All three are "could be luck" (t below 1). The meme max-3 record and its alerts run on **1D** (cap 3, 2% each, time-out after 15 days). Refresh the data with `tools/fetch-memes.ps1`.
+
 ### The honest scorecard
 
 The **LOGGER & HONEST SCORECARD** pane shows whether the logger is alive (sweeps in the last day, recent runs, failures) and — more importantly — the only comparison that can't be faked by a rising market:
