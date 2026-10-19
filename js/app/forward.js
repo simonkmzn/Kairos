@@ -34,6 +34,8 @@
   const SETS = {
     main: { key: 'terminal.forward', file: 'results/forward.json', coins: () => Dt.COINS, config: () => root.SIGNAL_CONFIG, book: { tfs: ['4h'], cap: 3, risk: 0.02 } },
     meme: { key: 'terminal.forward.meme', file: 'results/forward-meme.json', coins: () => Dt.MEME_COINS, config: () => root.MEME_CONFIG, book: { tfs: ['1d'], cap: 3, risk: 0.02 } },
+    // The 5-day meme strategy, run beside the 15-day one at the user's request (unproven).
+    meme5: { key: 'terminal.forward.meme5', file: 'results/forward-meme5.json', coins: () => Dt.MEME_COINS, config: () => root.MEME5_CONFIG, book: { tfs: ['1d'], cap: 3, risk: 0.02 } },
   };
 
   // ---------------- scoring (mirrors tuner.outcomes) ----------------
@@ -409,4 +411,5 @@
 
   K.forward = create('main');
   K.forwardMeme = create('meme');
+  K.forwardMeme5 = create('meme5');
 })(typeof self !== 'undefined' ? self : this);

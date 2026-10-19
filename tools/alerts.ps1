@@ -7,20 +7,21 @@
 #   alerts.ps1          send every alert not sent yet: TAKE IT when the capped book opens a
 #                       trade, and a message when one closes (CLOSE NOW for the time-out)
 #   -Set meme           the same for the meme section, on its own channel (topicMeme)
+#   -Set meme5          the 5-day meme strategy, on the same meme channel
 # tools\alerts.json and tools\alerts-sent*.json stay on this PC (.gitignore): anyone who
 # knows a channel name could read the alerts.
-param([switch]$Setup, [switch]$Test, [switch]$Preview, [ValidateSet('main', 'meme')][string]$Set = 'main')
+param([switch]$Setup, [switch]$Test, [switch]$Preview, [ValidateSet('main', 'meme', 'meme5')][string]$Set = 'main')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$meme = $Set -eq 'meme'
+$meme = $Set -ne 'main'
 $cfgFile = Join-Path $root 'tools\alerts.json'
-$sentFile = Join-Path $root $(if ($meme) { 'tools\alerts-sent-meme.json' } else { 'tools\alerts-sent.json' })
-$fwFile = Join-Path $root $(if ($meme) { 'results\forward-meme.json' } else { 'results\forward.json' })
+$sentFile = Join-Path $root @{ main = 'tools\alerts-sent.json'; meme = 'tools\alerts-sent-meme.json'; meme5 = 'tools\alerts-sent-meme5.json' }[$Set]
+$fwFile = Join-Path $root @{ main = 'results\forward.json'; meme = 'results\forward-meme.json'; meme5 = 'results\forward-meme5.json' }[$Set]
 $logFile = Join-Path $root 'results\logger.log'
 $utf8 = New-Object Text.UTF8Encoding $false
 $inv = [Globalization.CultureInfo]::InvariantCulture
-$pre = if ($meme) { 'MEME ' } else { '' }
+$pre = @{ main = ''; meme = 'MEME 15D '; meme5 = 'MEME 5D ' }[$Set]
 
 function Log($m) {
   $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $m"
@@ -55,7 +56,7 @@ if (-not (Test-Path $cfgFile)) { exit 0 }   # alerts not set up: nothing to do
 $cfg = Get-Content $cfgFile -Raw | ConvertFrom-Json
 $topic = if ($meme) { $cfg.topicMeme } else { $cfg.topic }
 if (-not $topic) { exit 0 }                  # this section's alerts not set up
-$siteHash = if ($meme) { '#memes/' } else { '#' }
+$siteHash = @{ main = '#'; meme = '#memes/'; meme5 = '#memes5/' }[$Set]
 
 function Send($title, $message, [int]$priority, $tags, $click) {
   $body = [ordered]@{ topic = $topic; title = $title; message = $message; priority = $priority; tags = @($tags) }
@@ -65,7 +66,7 @@ function Send($title, $message, [int]$priority, $tags, $click) {
 }
 
 if ($Test) {
-  if ($meme) { Send 'Signal Terminal: meme test' "Meme alerts are working. You'll get MEME TAKE IT here when the meme section's max-3 record opens a trade, and a message when one closes." 3 @('white_check_mark') "$($cfg.site)#memes" }
+  if ($meme) { Send 'Signal Terminal: meme test' "Meme alerts are working. MEME 15D TAKE IT = the tested 15-day strategy, MEME 5D TAKE IT = the unproven 5-day one. You also get a message when each trade closes." 3 @('white_check_mark') "$($cfg.site)#memes" }
   else { Send 'Signal Terminal: test' "Alerts are working. You'll get TAKE IT here when the 4H max-3 record opens a trade, and a message when one closes." 3 @('white_check_mark') $cfg.site }
   Write-Host 'Test alert sent.'
   exit 0
@@ -138,7 +139,8 @@ function ExitAlert($t) {
 if ($Preview) {
   $last = $trades | Sort-Object { [long]$_['t'] } | Select-Object -Last 1
   $closed = $trades | Where-Object { "$($_['status'])" -eq 'closed' } | Sort-Object { [long]$_['exitT'] } | Select-Object -Last 1
-  foreach ($a in @((EntryAlert $last), (ExitAlert $closed))) { Write-Host "---- $($a.title)  [priority $($a.priority), $($a.tag)]"; Write-Host $a.message; Write-Host "(tap opens: $($a.click))`n" }
+  $previews = @(); if ($last) { $previews += EntryAlert $last }; if ($closed) { $previews += ExitAlert $closed }
+  foreach ($a in $previews) { Write-Host "---- $($a.title)  [priority $($a.priority), $($a.tag)]"; Write-Host $a.message; Write-Host "(tap opens: $($a.click))`n" }
   exit 0
 }
 

@@ -12,9 +12,11 @@
   const btcCache = new Map(), htfCache = new Map();
   let fngCache = null;
 
-  // set: 'main' (config/signal.js) or 'meme' (config/meme.js, the meme section's own formula).
+  // set: 'main' (config/signal.js), 'meme' (config/meme.js, the meme section's own formula)
+  // or 'meme5' (config/meme5.js, the 5-day meme strategy, 1D only).
+  const CONFIGS = { main: 'SIGNAL_CONFIG', meme: 'MEME_CONFIG', meme5: 'MEME5_CONFIG' };
   function configFor(tf, set) {
-    const C = set === 'meme' ? root.MEME_CONFIG : root.SIGNAL_CONFIG;
+    const C = root[CONFIGS[set] || CONFIGS.main];
     const t = C && C.timeframes && C.timeframes[tf];
     return t && t.config && t.config.weights && t.config.weights.length === NS && t.config.combos && t.config.base ? t : null;
   }
@@ -91,7 +93,7 @@
     } else {
       // The meme formula was tuned with funding from the 1000-unit perps (1000PEPEUSDT ...);
       // the main formula was not, so it keeps reading the plain symbol.
-      const meme = set === 'meme' ? Dt.MEME_COINS.find((c) => c.symbol === symbol) : null;
+      const meme = set === 'meme' || set === 'meme5' ? Dt.MEME_COINS.find((c) => c.symbol === symbol) : null;
       [kl, rates] = await Promise.all([Dt.klines(symbol, tf, 1000), Dt.funding((meme && meme.futures) || symbol, 100)]);
       series = F.toSeries(kl.closed);
       feat = F.compute(kl.closed, tfDef, btc.feat, rates);

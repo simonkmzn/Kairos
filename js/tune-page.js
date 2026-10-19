@@ -5,9 +5,14 @@
   // tune-meme.html sets TUNE_SET = 'meme': meme coins, meme time windows, the main formula as
   // the rival, and its own output files. It never writes config/signal.js.
   const MEME = window.TUNE_SET === 'meme';
-  const OUT = MEME
-    ? { tuning: 'results/tuning-meme', tuningVar: 'MEME_TUNING', config: 'config/meme.js', configVar: 'MEME_CONFIG', page: 'tune-meme.html' }
-    : { tuning: 'results/tuning', tuningVar: 'SIGNAL_TUNING', config: 'config/signal.js', configVar: 'SIGNAL_CONFIG', page: 'tune.html' };
+  // tune-meme.html?variant=5d: the 5-day meme strategy (1D only, 5-candle time-out), saved to
+  // its own files so the 15-day meme formula is never overwritten.
+  const FIVE = MEME && new URLSearchParams(location.search).get('variant') === '5d';
+  const OUT = FIVE
+    ? { tuning: 'results/tuning-meme5', tuningVar: 'MEME5_TUNING', config: 'config/meme5.js', configVar: 'MEME5_CONFIG', page: 'tune-meme.html?variant=5d' }
+    : MEME
+      ? { tuning: 'results/tuning-meme', tuningVar: 'MEME_TUNING', config: 'config/meme.js', configVar: 'MEME_CONFIG', page: 'tune-meme.html' }
+      : { tuning: 'results/tuning', tuningVar: 'SIGNAL_TUNING', config: 'config/signal.js', configVar: 'SIGNAL_CONFIG', page: 'tune.html' };
   // Results from an older engine (different signals or result shape) are dropped rather than mixed in.
   const prior = Object.fromEntries(Object.entries((window[OUT.tuningVar] && window[OUT.tuningVar].timeframes) || {}).filter(([, r]) => r.config && r.config.weights && r.config.weights.length === Sg.NS && r.config.combos && Array.isArray(r.cellTable)));
   const state = (window.__tune = { state: 'idle', results: prior, saved: [], log: [], error: null, progress: null });
@@ -61,7 +66,7 @@
   }
 
   async function start() {
-    const tfs = [...document.querySelectorAll('input[type=checkbox]:checked')].map((c) => c.value);
+    const tfs = FIVE ? ['1d'] : [...document.querySelectorAll('input[type=checkbox]:checked')].map((c) => c.value);
     if (!tfs.length) return;
     let symbols, extra = {};
     if (MEME) {
@@ -70,7 +75,7 @@
       const main = (window.SIGNAL_CONFIG && window.SIGNAL_CONFIG.timeframes) || {};
       const rivals = {};
       for (const tf of tfs) if (main[tf]) rivals[tf] = { label: 'Main formula on these coins', weights: main[tf].config.weights, theta: main[tf].config.theta, baseKey: main[tf].config.base.key };
-      extra = { mlSymbols: symbols, windows: K.data.MEME_WINDOWS, rivals };
+      extra = { mlSymbols: symbols, windows: K.data.MEME_WINDOWS, rivals, maxBars: FIVE ? K.data.MEME5_MAXBARS : K.data.MEME_MAXBARS };
     } else {
       const coinSet = document.querySelector('input[name=coins]:checked').value;
       symbols = coinSet === 'all' ? K.tuner.SETTINGS.mlSymbols : K.tuner.SETTINGS.symbols;

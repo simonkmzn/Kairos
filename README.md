@@ -103,6 +103,8 @@ Rule set before the results were read: a meme timeframe is live only if, on unse
 
 All three are "could be luck" (t below 1). The meme max-3 record and its alerts run on **1D** (cap 3, 2% each, time-out after 15 days). Refresh the data with `tools/fetch-memes.ps1`.
 
+**MEMES 5D (unproven, run by choice).** The same meme build with a 5-day time-out on 1D (`tune-meme.html?variant=5d` → `config/meme5.js`), so trades end within a week. It fires only on very strong signals: 59 trades in the 15-month holdout, +0.052R per trade, t 0.37 — too few to call an edge, so the tab and every alert say "unproven". It has its own record (`results/forward-meme5.json`) and max-3 book, and alerts on the meme channel as **MEME 5D**; the tested 15-day strategy alerts as **MEME 15D**. The two can pick the same coin at the same time.
+
 ### The honest scorecard
 
 The **LOGGER & HONEST SCORECARD** pane shows whether the logger is alive (sweeps in the last day, recent runs, failures) and — more importantly — the only comparison that can't be faked by a rising market:

@@ -561,12 +561,14 @@
 
   // ---------------- pipeline ----------------
   // opts: { symbols, mlSymbols, windows: { trainStart, validationStart, holdoutStart, recentStart },
-  //         fng, htf, rival: { label, weights, theta, baseKey } }. Anything left out uses SETTINGS.
+  //         fng, htf, rival: { label, weights, theta, baseKey }, maxBars: { tf: candles } }.
+  // Anything left out uses SETTINGS. maxBars overrides the time-out for that timeframe.
   // rival = another finished formula run through the same coins, ML input and holdout, for a
   // like-for-like comparison (the meme section's formula against the main one).
   function runTimeframe(tf, data, opts, say) {
     const started = Date.now();
-    const tfDef = F.TIMEFRAMES[tf], cfgT = SETTINGS.timeframes[tf], barMs = tfDef.barMs;
+    const tfDef = F.TIMEFRAMES[tf], barMs = tfDef.barMs;
+    const cfgT = Object.assign({}, SETTINGS.timeframes[tf], opts && opts.maxBars && opts.maxBars[tf] ? { maxBars: opts.maxBars[tf] } : {});
     const W = Object.assign({ trainStart: SETTINGS.trainStart, validationStart: SETTINGS.validationStart, holdoutStart: SETTINGS.holdoutStart, recentStart: SETTINGS.recentStart }, opts && opts.windows);
     const symbols = ((opts && opts.symbols) || SETTINGS.symbols).filter((s) => data[s] && data[s].candles && data[s].candles.length > F.WARMUP + 300);
     const fng = (opts && opts.fng) || null, htfData = tf !== '1d' && opts && opts.htf ? opts.htf : null;

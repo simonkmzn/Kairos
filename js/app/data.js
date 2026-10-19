@@ -60,6 +60,12 @@
   // Most memes are young, so their split is later than the main formula's: built on
   // 2021 - mid-2024, chosen on mid-2024 - mid-2025, judged on mid-2025 onward.
   const MEME_WINDOWS = { trainStart: '2021-01-01', validationStart: '2024-07-01', holdoutStart: '2025-07-01', recentStart: '2026-01-01' };
+  // Time-outs (in candles) that differ from the main formula's, used by tune-meme.html.
+  // The meme formula keeps the standard 15 days on 1D. The 5-day strategy (MEMES 5D, built by
+  // tune-meme.html?variant=5d into config/meme5.js) runs beside it at the user's request,
+  // knowing it is unproven: 59 trades in the 15-month holdout, +0.052R, t 0.37, "no edge".
+  const MEME_MAXBARS = {};
+  const MEME5_MAXBARS = { '1d': 5 };
 
   // `model: true` = the forecast model was trained and tested on this timeframe.
   const INTERVALS = {
@@ -150,5 +156,5 @@
     return { stop() { stopped = true; if (ws) ws.close(); } };
   }
 
-  K.data = { COINS, MEME_COINS, MEME_WINDOWS, INTERVALS, klines, funding, tickers, liveTickers };
+  K.data = { COINS, MEME_COINS, MEME_WINDOWS, MEME_MAXBARS, MEME5_MAXBARS, INTERVALS, klines, funding, tickers, liveTickers };
 })(typeof self !== 'undefined' ? self : this);

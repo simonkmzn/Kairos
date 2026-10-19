@@ -7,8 +7,13 @@
   // forward-test record and alerts. COINS / Fw / the config always point at the open one.
   const SETS = {
     main: { id: 'main', label: 'MAIN', coins: Dt.COINS, fw: K.forward, report: 'tune.html', config: () => window.SIGNAL_CONFIG },
-    meme: { id: 'meme', label: 'MEMES', coins: Dt.MEME_COINS, fw: K.forwardMeme, report: 'tune-meme.html', config: () => window.MEME_CONFIG },
+    meme: { id: 'meme', label: 'MEMES', coins: Dt.MEME_COINS, fw: K.forwardMeme, report: 'tune-meme.html', config: () => window.MEME_CONFIG, hash: 'memes', file: 'results/forward-meme.json' },
+    // The 5-day meme strategy (1D only), shown and alerted at the user's request although its
+    // test was too thin to call an edge: never gated, always labelled unproven.
+    meme5: { id: 'meme5', label: 'MEMES 5D', coins: Dt.MEME_COINS, fw: K.forwardMeme5, report: 'tune-meme.html?variant=5d', config: () => window.MEME5_CONFIG, hash: 'memes5', file: 'results/forward-meme5.json', unproven: true },
   };
+  SETS.main.hash = '';
+  SETS.main.file = 'results/forward.json';
   const ALL_SYMBOLS = [...new Set([...Dt.COINS, ...Dt.MEME_COINS].map((c) => c.symbol))];
   let COINS = Dt.COINS;
   const MINUS = '−';
@@ -60,10 +65,11 @@
   // entries with the same long/short mix. Meme 4H (95% shorts while memes fell) did not.
   const noSkill = (tf) => {
     if (state.set === 'main') return NO_CONSISTENT_SKILL[tf];
+    if (SETS[state.set].unproven) return null;
     const c = window.MEME_CONFIG && window.MEME_CONFIG.timeframes[tf], h = c && c.holdout;
     return h && !(h.avgR > 0 && h.skill > 0) ? `no better than random entries on unseen data (skill ${signed(h.skill, 3)}R)` : null;
   };
-  const gatedTf = (tf, cfg) => (cfg && cfg.config.edge === 'none') || !!noSkill(tf);
+  const gatedTf = (tf, cfg) => (!SETS[state.set].unproven && cfg && cfg.config.edge === 'none') || !!noSkill(tf);
   const setCfg = () => SETS[state.set].config();
 
   // ---------------- URL + parameter state ----------------
@@ -79,9 +85,10 @@
     const parts = decodeURIComponent(location.hash.slice(1)).split('/').filter(Boolean);
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('terminal.view') || '{}'); } catch (e) { /* blocked */ }
-    const memeHash = !!parts[0] && parts[0].toLowerCase() === 'memes';
-    if (memeHash) parts.shift();
-    const set = memeHash ? 'meme' : location.hash.length > 1 ? 'main' : saved.set === 'meme' ? 'meme' : 'main';
+    const first = (parts[0] || '').toLowerCase();
+    const hashSet = Object.values(SETS).find((s) => s.hash && s.hash === first);
+    if (hashSet) parts.shift();
+    const set = hashSet ? hashSet.id : location.hash.length > 1 ? 'main' : SETS[saved.set] ? saved.set : 'main';
     applySet(set);
     const savedHere = (saved.set || 'main') === state.set;
     const tk = (parts[0] || (savedHere && saved.ticker) || COINS[0].ticker).toUpperCase();
@@ -91,7 +98,7 @@
   }
   function writeHash() {
     const c = coinOf(state.coin);
-    const h = state.set === 'meme' ? `#memes/${c.ticker}/${state.tf}` : `#${c.ticker}/${state.tf}`;
+    const h = SETS[state.set].hash ? `#${SETS[state.set].hash}/${c.ticker}/${state.tf}` : `#${c.ticker}/${state.tf}`;
     if (location.hash !== h) history.replaceState(null, '', h);
     try { localStorage.setItem('terminal.view', JSON.stringify({ set: state.set, ticker: c.ticker, tf: state.tf })); } catch (e) { /* blocked */ }
   }
@@ -99,7 +106,7 @@
     try { state.params = JSON.parse(localStorage.getItem('terminal.params') || '{}'); } catch (e) { state.params = {}; }
   }
   // Overrides are kept per section: the meme formula's bars and exits are its own.
-  const pkey = (tf) => (state.set === 'meme' ? `meme:${tf}` : tf);
+  const pkey = (tf) => (state.set === 'main' ? tf : `${state.set}:${tf}`);
   const paramsFor = (tf) => state.params[pkey(tf)] || {};
   function setParams(tf, patch) {
     state.params[pkey(tf)] = Object.assign({}, paramsFor(tf), patch);
@@ -224,12 +231,12 @@
     if (!C) { $('#fw-meta').innerHTML = ''; $('#forward').innerHTML = '<p class="empty" style="padding:8px 0">The meme formula has not been built yet (tune-meme.html), so there is no record to show.</p>'; return; }
     if (!st.loaded) { $('#forward').innerHTML = '<div class="skel" style="height:90px"></div>'; return; }
     const meta = [];
-    if (state.set === 'meme') meta.push('<b>memes</b>');
+    if (state.set !== 'main') meta.push(`<b>${SETS[state.set].label.toLowerCase()}</b>`);
     if (st.mirror) meta.push('<b class="y">read-only mirror</b>');
     else if (st.sweeping) meta.push('<span class="updating">sweeping…</span>');
     else if (st.lastSweepAt) meta.push(`swept ${clock(st.lastSweepAt)}`);
     meta.push(`since ${new Date(st.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`);
-    if (!st.mirror) meta.push(st.server ? (state.set === 'meme' ? 'results/forward-meme.json' : 'results/forward.json') : 'this browser only');
+    if (!st.mirror) meta.push(st.server ? SETS[state.set].file : 'this browser only');
     if (st.logger && st.logger.at) meta.push(`${st.mirror ? 'PC swept' : 'auto-logger ran'} ${barTime(st.logger.at, '1h')}`);
     $('#fw-meta').innerHTML = meta.join(' · ');
     const tiles = Fw.TFS.map((tf) => {
@@ -347,16 +354,18 @@
     } catch (e) {
       error = e.message;
     }
-    // The meme section's record, swept in the same run (its alerts read results/forward-meme.json).
-    if (window.MEME_CONFIG) {
-      const m = K.forwardMeme;
+    // The meme records (15-day formula and 5-day strategy), swept in the same run; their alerts
+    // read results/forward-meme.json and results/forward-meme5.json.
+    for (const s of [SETS.meme, SETS.meme5]) {
+      if (!s.config()) continue;
+      const m = s.fw;
       try {
         await m.load();
         await m.sweep(true);
       } catch (e) {
         m.state.error = e.message;
       }
-      memeInfo = { meme: { trades: m.state.trades.length, open: m.state.trades.filter((t) => t.status === 'open').length, closed: m.state.trades.filter((t) => t.status === 'closed').length, error: m.state.error || null } };
+      memeInfo = Object.assign(memeInfo || {}, { [s.id]: { trades: m.state.trades.length, open: m.state.trades.filter((t) => t.status === 'open').length, closed: m.state.trades.filter((t) => t.status === 'closed').length, error: m.state.error || null } });
     }
     const status = await K.forward.reportStatus(error, memeInfo);
     window.__loggerDone = status;
@@ -410,6 +419,7 @@
       cls = 'wait';
       sub = `${SIG_LABEL[tf]}${state.set === 'meme' ? ' memes' : ''}: ${noSkill(tf) || 'no tested edge after fees'} · formula says ${callWord(d.rawCall)} · ${state.set === 'main' ? NO_EDGE_TF[tf] : 'use 1D'}`;
     }
+    if (SETS[state.set].unproven) sub += ' · <b class="y">unproven 5-day strategy</b>';
     const custom = paramsFor(tf);
     const overridden = (custom.theta && (custom.theta[0] !== a.cfg.config.theta[0] || custom.theta[1] !== a.cfg.config.theta[1])) || custom.exit === 'fixed';
     $('#signal').innerHTML = `
@@ -424,7 +434,7 @@
         ${d.tilt ? `<div class="row"><span>Tested formula alone</span><b>${callWord(d.callTested)} · ${pctAbs(d.pTested)} <span class="untested">news tilt ${signed(d.tilt, 2)}</span></b></div>` : ''}
         <div class="row"><span>Updated</span><b id="sig-time">${clock(a.computedAt)} · every 60s</b></div>
       </div>
-      <p class="line basis">${state.set === 'meme' ? 'Meme formula · ' : ''}${Sg.SIGNALS.length} signals · tuned 2021–${monthYear(a.cfg.windows.holdoutStart)} · verified ${monthYear(a.cfg.windows.holdoutStart)}→now · ${SIG_LABEL[tf]} candle closed ${barTime(a.t + a.barMs, tf)}</p>`;
+      <p class="line basis">${state.set === 'meme' ? 'Meme formula · ' : state.set === 'meme5' ? '5-day meme strategy (unproven) · ' : ''}${Sg.SIGNALS.length} signals · tuned 2021–${monthYear(a.cfg.windows.holdoutStart)} · verified ${monthYear(a.cfg.windows.holdoutStart)}→now · ${SIG_LABEL[tf]} candle closed ${barTime(a.t + a.barMs, tf)}</p>`;
   }
 
   function renderRisk(a, d) {
@@ -553,7 +563,9 @@
   }
   function renderNotTuned() {
     const page = SETS[state.set].report;
-    $('#signal').innerHTML = `<div class="empty"><h3>${state.set === 'meme' ? 'Meme formula not built yet' : 'Signal engine not tuned yet'}</h3>Run <code>serve.cmd</code>, then open <a href="${page}">${page}</a> and start the tuning. It builds the formula from history and saves it here.</div>`;
+    $('#signal').innerHTML = SETS[state.set].unproven && SETS[state.set].config()
+      ? '<div class="empty"><h3>1D only</h3>The 5-day meme strategy runs on daily candles. Pick <b>1D</b> above.</div>'
+      : `<div class="empty"><h3>${state.set === 'main' ? 'Signal engine not tuned yet' : 'Meme formula not built yet'}</h3>Run <code>serve.cmd</code>, then open <a href="${page}">${page}</a> and start the tuning. It builds the formula from history and saves it here.</div>`;
     ['#risk-pane', '#breakdown-pane', '#tested-pane'].forEach((s) => ($(s).hidden = true));
     $('#params').innerHTML = '';
   }
@@ -565,7 +577,8 @@
     const a = state.analysis;
     if (!a || a.symbol !== state.coin || a.set !== state.set) return;
     const tf = sigTf();
-    const d = (state.derived = Eng.derive(a, newsTilt().total, Object.assign({ forceGate: !!noSkill(tf) }, paramsFor(tf))));
+    // The 5-day strategy is shown and alerted although its test called no edge (user's choice).
+    const d = (state.derived = Eng.derive(a, newsTilt().total, Object.assign({ forceGate: !!noSkill(tf) }, paramsFor(tf), SETS[state.set].unproven ? { showCalls: true } : {})));
     ['#risk-pane', '#breakdown-pane', '#tested-pane'].forEach((s) => ($(s).hidden = false));
     renderSignal(a, d);
     renderRisk(a, d);

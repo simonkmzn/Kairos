@@ -7,7 +7,7 @@ async function loadJson(path) {
 }
 
 self.onmessage = async (e) => {
-  const { timeframes, symbols, mlSymbols, windows, rivals } = e.data;
+  const { timeframes, symbols, mlSymbols, windows, rivals, maxBars } = e.data;
   const S = KAIROS.tuner.SETTINGS;
   // Coins to load: the ML training set, the tuned coins, and BTC (its context feeds every alt).
   const load = [...new Set([...(mlSymbols || S.mlSymbols), ...symbols, 'BTCUSDT'])];
@@ -29,7 +29,7 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'progress', tf, pct: 0, msg: `Loading ${tf} ${s}` });
         try { data[s] = { candles: (await loadJson(`../data/${tf}/${s}.json`)).candles, funding: funding[s] }; } catch (err) { /* coin missing */ }
       }
-      const opts = { symbols, fng, htf, mlSymbols, windows, rival: rivals && rivals[tf] };
+      const opts = { symbols, fng, htf, mlSymbols, windows, rival: rivals && rivals[tf], maxBars };
       const result = KAIROS.tuner.runTimeframe(tf, data, opts, (msg, frac) => self.postMessage({ type: 'progress', tf, pct: Math.round(frac * 1000) / 10, msg }));
       self.postMessage({ type: 'result', tf, result });
     }
