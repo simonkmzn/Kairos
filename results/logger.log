@@ -665,3 +665,10 @@
 2026-11-07 19:06:11  pushed the log to GitHub
 2026-11-07 20:05:03  launched msedge.exe (pid 11100) for a sweep
 2026-11-07 20:06:04  sweep saved: 715 trades logged (25 open, 690 closed)
+2026-11-07 20:06:08  pushed the log to GitHub
+2026-11-17 20:05:16  server not running; starting it hidden
+2026-11-17 20:05:22  launched msedge.exe (pid 22292) for a sweep
+2026-11-17 20:10:24  sweep did not report back in time (browser closed)
+2026-11-17 21:05:04  launched msedge.exe (pid 13112) for a sweep
+2026-11-17 21:08:05  sweep saved: 898 trades logged (46 open, 852 closed)
+2026-11-17 21:08:05  alert sent: CLOSE NOW: ENA short time-out (+1.66R)
